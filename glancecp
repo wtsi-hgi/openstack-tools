@@ -552,7 +552,6 @@ class GlanceCPShell(object):
         if endpoint is None:
             endpoint_type = args.os_endpoint_type or 'public'
             service_type = args.os_service_type or 'image'
-            print("getting endpoint for service_type [%s] endpoint_type [%s] region_name [%s] ks_session.auth [%s] ks_session.__dict__ [%s]" % (service_type, endpoint_type, args.os_region_name, ks_session.auth, ks_session.__dict__))
             endpoint = ks_session.get_endpoint(
                 service_type=service_type,
                 interface=endpoint_type,
@@ -608,8 +607,6 @@ class GlanceCPShell(object):
         source_client = self.authenticate_client("source", args)
         dest_client = self.authenticate_client("dest", args)
 
-        print("source_client: %s" % source_client)
-        print("dest_client: %s" % dest_client)
 
 def debug_enabled(argv):
     if bool(utils.env('GLANCECP_DEBUG')) is True:
