@@ -110,15 +110,19 @@ class GlanceCPShell(object):
 
         raise ValueError("Failed to parse specification [%s]" % spec)
 
+    def env_section(self, env_name):
+        section = env_name
+        if section == "":
+            section = "common"
+        return section
+
     def get_default(self, env_name, config, *params, default=""):
         # try to get each param in the *params list in order from env_name section of config (or the common section if env_name is empty)
         # failing that, if env_name is not empty try to get it from an environment variable named <ENV>_<PARAM> (e.g. myenv_OS_AUTH_URL)
         # failing that, for OS_PROJECT_NAME if env_name is not empty set it to env_name
         # failing that, try to get it from an environment variable named <PARAM> (e.g. OS_AUTH_URL)
         # failing that, return the value given in the default keyword argument
-        section = env_name
-        if section == "":
-            section = "common"
+        section = self.env_section(env_name)
         for param in params:
             value = config.get(section, param, fallback=None)
             if value:
@@ -137,10 +141,15 @@ class GlanceCPShell(object):
         if len(params) == 0:
             raise ValueError("get_help called with no params")
         defaults = []
+        section = self.env_section(env_name)
         for param in params:
-            defaults.append("config option %s in section [%s]" % (param, env_name))
+            defaults.append("config option %s in section [%s]" % (param, section))
+        if env_name != "":
+            for param in params:
+                defaults.append("env[%s_%s]" % (env_name, param))
         for param in params:
-            defaults.append("env[%s_%s]" % (env_name, param))
+            if param == "OS_PROJECT_NAME":
+                defaults.append("the env_name in the specification (%s)" % (env_name))
         for param in params:
             defaults.append("env[%s]" % (param))
         if len(defaults) > 1:
@@ -309,6 +318,7 @@ class GlanceCPShell(object):
             description=__doc__.strip(),
             add_help=(not initial),
             formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
         parser.add_argument("source", help='''
                A specification of the source image, in the format
                [<os_environment>:]<image_id|image_name>, where <os_environment>
@@ -316,6 +326,7 @@ class GlanceCPShell(object):
                which must match the regex [a-zA-Z0-9_]+ and <image_id|image_name>
                can optionally be single or double-quoted.
         ''')
+
         parser.add_argument("dest", help='''
                A specification of the destination image, in the format
                [<os_environment>:]<image_id|image_name>, where <os_environment>
@@ -323,6 +334,7 @@ class GlanceCPShell(object):
                which must match the regex [a-zA-Z0-9_]+ and <image_id|image_name>
                can optionally be single or double-quoted.
         ''')
+
         parser.add_argument("--config",
             default=utils.env('GLANCECP_CONFIG_FILE', default="glancecp.config"),
             help='''
@@ -351,6 +363,7 @@ class GlanceCPShell(object):
                will attempt to read configuration from a file called
                'glancecp.config' in the current directory.
         ''')
+
         parser.add_argument("--properties",
             default="min_disk,min_ram",
             help='''
@@ -359,6 +372,22 @@ class GlanceCPShell(object):
                are read-only and attempting to set them will cause the copy
                to fail.
         ''')
+
+        parser.add_argument("--duplicate-name-strategy",
+            default="none",
+            choices=["none", "allow", "replace"],
+            help='''
+               Strategy for handling duplicate names at destination:
+                 - "none":    Do not allow duplicate names, copying will fail
+                              if the destination already exists.
+                 - "allow":   Allow creation of destination even if images with
+                              the destination name already exist.
+                 - "replace": Remove any images already present with the
+                              destination name and replace them with the
+                              source image.
+        ''')
+        parser.add_argument("--duplicate_name_strategy",
+                            help=argparse.SUPPRESS)
 
         self.add_openstack_args(parser, "source", source_env, config)
         self.add_openstack_args(parser, "dest", dest_env, config)
@@ -667,6 +696,28 @@ class GlanceCPShell(object):
             dest_image_properties['name'] = dest_name
         else:
             dest_image_properties['name'] = source_image['name']
+
+        if args.duplicate_name_strategy != "allow":
+            # check for existing images by that name at destination
+            for image in dest_client.images.list():
+                if image.name == dest_image_properties['name']:
+                    if args.duplicate_name_strategy == "replace":
+                        print("deleting existing image %s ('%s')" % (image.id, image.name), file=sys.stderr)
+                        try:
+                            dest_client.images.delete(image.id)
+                        except Exception as e:
+                            utils.exit("Failed to delete image with conflicting "
+                                       "name '%s': %s" % (image.name, e))
+                    elif args.duplicate_name_strategy == "none":
+                        utils.exit("An image named '%s' is already present at "
+                                   "destination. Please change to a unique name, "
+                                   "use the '--duplicate-name-strategy=allow' "
+                                   "option to allow creation of images with "
+                                   "duplicate names, or use the "
+                                   "'--duplicate-name-strategy=replace' option "
+                                   "to remove any other images with the "
+                                   "destination name."
+                                   % dest_image_properties['name'])
 
         # inform user we are copying
         # TODO: only if verbose?
