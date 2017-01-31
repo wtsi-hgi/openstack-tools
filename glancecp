@@ -111,15 +111,27 @@ class GlanceCPShell(object):
         raise ValueError("Failed to parse specification [%s]" % spec)
 
     def get_default(self, env_name, config, *params, default=""):
-        # try to get each param in the *params list in order from env_name section of config
-        # failing that, try to get them from an environment variable named <ENV>_<PARAM> (e.g. myenv_OS_AUTH_URL)
-        # failing that, try to get them from an environment variable named <PARAM> (e.g. OS_AUTH_URL)
+        # try to get each param in the *params list in order from env_name section of config (or the common section if env_name is empty)
+        # failing that, if env_name is not empty try to get it from an environment variable named <ENV>_<PARAM> (e.g. myenv_OS_AUTH_URL)
+        # failing that, for OS_PROJECT_NAME if env_name is not empty set it to env_name
+        # failing that, try to get it from an environment variable named <PARAM> (e.g. OS_AUTH_URL)
+        # failing that, return the value given in the default keyword argument
+        section = env_name
+        if section == "":
+            section = "common"
         for param in params:
-            value = config.get(env_name, param, fallback=None)
+            value = config.get(section, param, fallback=None)
             if value:
                 return value
-        env_params = [('%s_%s' % (env_name, param)) for param in params]
-        return utils.env(*(env_params + list(params)), default=default)
+        if env_name != "":
+            env_params = [('%s_%s' % (env_name, param)) for param in params]
+            value = utils.env(*env_params, default=None)
+            if value:
+                return value
+            for param in params:
+                if param == "OS_PROJECT_NAME":
+                    return env_name
+        return utils.env(*params, default=default)
 
     def get_help(self, env_name, *params):
         if len(params) == 0:
