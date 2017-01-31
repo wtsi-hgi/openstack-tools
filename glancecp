@@ -48,6 +48,7 @@ Copies images from one OpenStack glance environment to another.
 import argparse
 import copy
 import getpass
+import io
 import os.path
 import re
 import sys
@@ -342,6 +343,14 @@ class GlanceCPShell(object):
                will attempt to read configuration from a file called
                'glancecp.config' in the current directory.
         ''')
+        parser.add_argument("--properties",
+            default="min_disk,min_ram",
+            help='''
+               Comma-delimited list of properties to copy from the source
+               image to the destination image. Note that some properties
+               are read-only and attempting to set them will cause the copy
+               to fail.
+        ''')
 
         self.add_openstack_args(parser, "source", source_env, config)
         self.add_openstack_args(parser, "dest", dest_env, config)
@@ -558,7 +567,7 @@ class GlanceCPShell(object):
                 region_name=args.os_region_name)
 
         return glanceclient.Client(api_version, endpoint, **kwargs)
-    
+
     def authenticate_client(self, source_or_dest, args):
         os_args = {k[len(source_or_dest)+1:] : v for k, v in vars(args).items() if k.startswith("%s_os_" % source_or_dest)}
         for general_arg in ['insecure','timeout']:
@@ -598,7 +607,7 @@ class GlanceCPShell(object):
 
         # parse source and destination
         source_env, source_id_or_name = self.parse_specification(init_args.source)
-        dest_env, dest_id_or_name = self.parse_specification(init_args.dest)
+        dest_env, dest_name = self.parse_specification(init_args.dest)
 
         # parse args again, this time with help enabled
         args = self.parse_args(argv, initial=False, source_env=source_env, dest_env=dest_env, config=config)
@@ -607,6 +616,51 @@ class GlanceCPShell(object):
         source_client = self.authenticate_client("source", args)
         dest_client = self.authenticate_client("dest", args)
 
+        # find source image
+        source_image = None
+        try:
+            source_image = source_client.images.get(source_id_or_name)
+        except exc.HTTPNotFound:
+            found = False
+            for image in source_client.images.list():
+                if image.name == source_id_or_name:
+                    if found:
+                        utils.exit("Multiple source images were found named %s, cannot continue." % source_id_or_name)
+                    else:
+                        source_image = source_client.images.get(image.id)
+                        found = True
+        if not source_image:
+            utils.exit("Source image not found: %s" % source_id_or_name)
+
+        # prepare destination image properties
+        dest_image_properties = dict()
+
+        # copy essential properties (cannot upload without these)
+        for key in ['disk_format', 'container_format']:
+            dest_image_properties[key] = source_image[key]
+
+        # copy extra properties according to user list
+        for key in args.properties.split(','):
+            k = key.strip()
+            dest_image_properties[k] = source_image[k]
+
+        # set or copy name
+        if dest_name != "":
+            dest_image_properties['name'] = dest_name
+        else:
+            dest_image_properties['name'] = source_image['name']
+
+        # create destination image
+        try:
+            dest_image = dest_client.images.create(**dest_image_properties)
+        except Exception as e:
+            utils.exit("Unxpected exception type %s: %s" % (type(e), e))
+
+        # copy data from source to destination
+        try:
+            dest_client.images.upload(dest_image.id, data_to_upload_stream(source_client.images.data(source_image.id)))
+        except Exception as e:
+            utils.exit("Unxpected exception type %s: %s" % (type(e), e))
 
 def debug_enabled(argv):
     if bool(utils.env('GLANCECP_DEBUG')) is True:
@@ -614,6 +668,25 @@ def debug_enabled(argv):
     if '--debug' in argv or '-d' in argv:
         return True
     return False
+
+
+def data_to_upload_stream(data, buffer_size=io.DEFAULT_BUFFER_SIZE):
+    class UploadStream(io.RawIOBase):
+        def __init__(self, data_iter):
+            self.remaining_data = None
+            self.data_iter = data_iter
+        def readable(self):
+            return True
+        def readinto(self, b):
+            try:
+                max_chunk_size = len(b)
+                chunk = self.remaining_data or next(self.data_iter)
+                output, self.remaining_data = chunk[:max_chunk_size], chunk[max_chunk_size:]
+                b[:len(output)] = output
+                return len(output)
+            except StopIteration:
+                return 0
+    return io.BufferedReader(UploadStream(iter(data)), buffer_size=buffer_size)
 
 def main():
     try:
