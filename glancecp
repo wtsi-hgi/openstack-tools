@@ -376,7 +376,7 @@ class GlanceCPShell(object):
 
         parser.add_argument("--duplicate-name-strategy",
             default="none",
-            choices=["none", "allow", "replace"],
+            choices=["none", "allow", "replace", "rename"],
             help='''
                Strategy for handling duplicate names at destination:
                  - "none":    Do not allow duplicate names, copying will fail
@@ -386,6 +386,10 @@ class GlanceCPShell(object):
                  - "replace": Remove any images already present with the
                               destination name and replace them with the
                               source image.
+                 - "rename":  Rename any images already present with the
+                              destination name to make them unique. 
+                              Currently this is implemented with a 
+                              monotonically increasing integer suffix.
         ''')
         parser.add_argument("--duplicate_name_strategy",
                             help=argparse.SUPPRESS)
@@ -677,11 +681,16 @@ class GlanceCPShell(object):
                     else:
                         source_image = source_client.images.get(image.id)
                         found = True
+        except exc.CommunicationError as ce:
+            utils.exit("Communication error while attempting to get source image: %s" (ce))
+        except exc.HTTPInternalServerError as hise:
+            utils.exit("Internal server error while attempting to get source image: %s" (hise))
+
         if not source_image:
             utils.exit("Source image not found: %s" % source_id_or_name)
 
         # prepare destination image properties
-        dest_image_properties = dict()
+        dest_image_properties = {}
 
         # copy essential properties (cannot upload without these)
         for key in ['disk_format', 'container_format']:
@@ -698,27 +707,50 @@ class GlanceCPShell(object):
         else:
             dest_image_properties['name'] = source_image['name']
 
+        # check for duplicates and plan strategy to deal with them
+        delete_images = []
+        rename_images = []
+        image_names = {}
         if args.duplicate_name_strategy != "allow":
             # check for existing images by that name at destination
             for image in dest_client.images.list():
+                if args.duplicate_name_strategy in ["rename", "replace"]:
+                    image_names[image.name] = 1
                 if image.name == dest_image_properties['name']:
                     if args.duplicate_name_strategy == "replace":
-                        print("deleting existing image %s ('%s')" % (image.id, image.name), file=sys.stderr)
-                        try:
-                            dest_client.images.delete(image.id)
-                        except Exception as e:
-                            utils.exit("Failed to delete image with conflicting "
-                                       "name '%s': %s" % (image.name, e))
+                        rename_images.append(image.id)
+                        delete_images.append(image.id)
+                    elif args.duplicate_name_strategy == "rename":
+                        rename_images.append(image.id)
                     elif args.duplicate_name_strategy == "none":
                         utils.exit("An image named '%s' is already present at "
                                    "destination. Please change to a unique name, "
                                    "use the '--duplicate-name-strategy=allow' "
                                    "option to allow creation of images with "
-                                   "duplicate names, or use the "
+                                   "duplicate names, use the "
                                    "'--duplicate-name-strategy=replace' option "
                                    "to remove any other images with the "
-                                   "destination name."
-                                   % dest_image_properties['name'])
+                                   "destination name, or use the "
+                                   "'--duplicate-name-strategy=rename' option "
+                                   "to rename any existing images to make them "
+                                   "unique." % dest_image_properties['name'])
+                    else:
+                        raise ValueError("Unexpected value for '--duplicate-name-strategy': %s", args.duplicate_name_strategy)
+
+        suffix = 1
+        for image_id in rename_images:
+            while "%s.%s" % (dest_image_properties['name'], suffix) in image_names:
+                suffix += 1
+            new_name = "%s.%s" % (dest_image_properties['name'], suffix)
+            print("renaming existing image %s to '%s'" % (image_id, new_name), file=sys.stderr)
+            try:
+                dest_client.images.update(image_id, name=new_name)
+            except exc.CommunicationError as ce:
+                utils.exit("Communication error while attempting to rename existing image: %s" (ce))
+            except exc.HTTPInternalServerError as hise:
+                utils.exit("Internal server error while attempting to rename existing image: %s" (hise))
+            except exc.BaseException as e:
+                utils.exit("Failed to rename existing image (exception type %s): %s" % (type(e), e))
 
         # inform user we are copying
         # TODO: only if verbose?
@@ -727,18 +759,49 @@ class GlanceCPShell(object):
         # create destination image
         try:
             dest_image = dest_client.images.create(**dest_image_properties)
-        except Exception as e:
+        except exc.CommunicationError as ce:
+            utils.exit("Communication error while attempting to create image: %s" (ce))
+        except exc.HTTPInternalServerError as hise:
+            utils.exit("Internal server error while attempting to create image: %s" (hise))
+        except exc.BaseException as e:
             utils.exit("Failed to create destination image (exception type %s): %s" % (type(e), e))
 
         # copy data from source to destination
+        failure_reason = ""
         try:
             dest_client.images.upload(dest_image.id, data_to_upload_stream(source_client.images.data(source_image.id)))
-        except Exception as ue:
+        except exc.CommunicationError as ce:
+            failure_reason = "Communication error while attempting to transfer image: %s" % (ce)
+        except exc.HTTPInternalServerError as hise:
+            failure_reason = "Internal server error while attempting to transfer image: %s" % (hise)
+        except exc.BaseException as ue:
+            failure_reason = "Failed to upload image (exception type %s): %s" % (type(ue), ue)
+
+        if failure_reason != "":
             try:
                 dest_client.images.delete(dest_image.id)
+            except exc.CommunicationError as ce:
+                utils.exit("%s. In addition, there was a communication error while attempting to delete image after upload failed: %s" (failure_reason, ce))
+            except exc.HTTPInternalServerError as hise:
+                utils.exit("%s. In addition, there was an internal server error while attempting to delete image after upload failed: %s" (failure_reason, hise))
             except Exception as de:
-                utils.exit("Failed to delete image after upload failed (exception type %s): %s" % (type(de), de))
-            utils.exit("Failed to upload image (exception type %s): %s" % (type(ue), ue))
+                utils.exit("%s. In addition, failed to delete image after upload failed (exception type %s): %s" % (failure_reason, type(de), de))
+            utils.exit(failure_reason)
+
+        # successfully created image, now delete any images scheduled for deletion (because of duplicate_name_strategy=replace)
+        for image_id in delete_images:
+            print("deleting existing image %s because it had a duplicate name" % (image_id), file=sys.stderr)
+            try:
+                dest_client.images.delete(image_id)
+            except exc.CommunicationError as ce:
+                utils.exit("Communication error while attempting to delete image %s with duplicate name: %s" (image_id, ce))
+            except exc.HTTPInternalServerError as hise:
+                utils.exit("Internal server error while attempting to delete image %s with duplicate name: %s" (image_id, hise))
+            except exc.HTTPConflict as hc:
+                utils.exit("Conflict while attempting to delete image %s with duplicate name: %s" (image_id, hc))
+            except exc.BaseException as e:
+                utils.exit("Failed to delete image %s with duplicate "
+                           "name (exception type %s): %s" % (image_id, type(e), e))
 
         # tell the user the id of their new image
         print(dest_image.id)
