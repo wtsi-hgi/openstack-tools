@@ -53,26 +53,22 @@ import os.path
 import re
 import sys
 import traceback
-
 from configparser import ConfigParser
 
-from oslo_utils import encodeutils
-import six.moves.urllib.parse as urlparse
-
 import glanceclient
+import six.moves.urllib.parse as urlparse
+from glanceclient import exc
 from glanceclient._i18n import _
 from glanceclient.common import utils
-from glanceclient import exc
-
-from keystoneclient.auth.identity import v2 as v2_auth
-from keystoneclient.auth.identity import v3 as v3_auth
 from keystoneclient import discover
 from keystoneclient import exceptions as ks_exc
 from keystoneclient import session
-
-from keystoneauth1 import loading
+from keystoneclient.auth.identity import v2 as v2_auth
+from keystoneclient.auth.identity import v3 as v3_auth
+from oslo_utils import encodeutils
 
 SUPPORTED_VERSIONS = [1, 2]
+
 
 class GlanceCPShell(object):
     def load_config(self, config_file):
@@ -154,7 +150,7 @@ class GlanceCPShell(object):
         for param in params:
             defaults.append("env[%s]" % (param))
         if len(defaults) > 1:
-            defaults[-1] = "or "+defaults[-1]
+            defaults[-1] = "or " + defaults[-1]
         return 'Defaults to: %s' % (', '.join(defaults))
 
     def add_openstack_args(self, parser, source_or_dest, env_name, config):
@@ -195,7 +191,7 @@ class GlanceCPShell(object):
 
         parser.add_argument('--%s-os-password' % source_or_dest,
                             default=self.get_default(env_name, config, 'OS_PASSWORD'),
-                            help=self.get_help(env_name, 'OS_PASSWORD')+'''
+                            help=self.get_help(env_name, 'OS_PASSWORD') + '''
                                WARNING: specifying your password on the command-line
                                may expose it to other users on the same machine.
                             ''')
@@ -311,8 +307,6 @@ class GlanceCPShell(object):
         parser.add_argument('--%s_os_image_api_version' % source_or_dest,
                             help=argparse.SUPPRESS)
 
-
-
     def parse_args(self, argv, initial=True, source_env="", dest_env="", config=ConfigParser()):
         parser = argparse.ArgumentParser(
             prog="glancecp",
@@ -337,8 +331,8 @@ class GlanceCPShell(object):
         ''')
 
         parser.add_argument("--config",
-            default=utils.env('GLANCECP_CONFIG_FILE', default="glancecp.config"),
-            help='''
+                            default=utils.env('GLANCECP_CONFIG_FILE', default="glancecp.config"),
+                            help='''
                Path to an INI-style config file (or '-' to read configuration from
                standard input).
 
@@ -366,8 +360,8 @@ class GlanceCPShell(object):
         ''')
 
         parser.add_argument("--properties",
-            default="min_disk,min_ram",
-            help='''
+                            default="min_disk,min_ram",
+                            help='''
                Comma-delimited list of properties to copy from the source
                image to the destination image. Note that some properties
                are read-only and attempting to set them will cause the copy
@@ -375,9 +369,9 @@ class GlanceCPShell(object):
         ''')
 
         parser.add_argument("--duplicate-name-strategy",
-            default="none",
-            choices=["none", "allow", "replace"],
-            help='''
+                            default="none",
+                            choices=["none", "allow", "replace"],
+                            help='''
                Strategy for handling duplicate names at destination:
                  - "none":    Do not allow duplicate names, copying will fail
                               if the destination already exists.
@@ -394,7 +388,7 @@ class GlanceCPShell(object):
         self.add_openstack_args(parser, "dest", dest_env, config)
 
         parser.add_argument('--insecure', default=False,
-            help='''
+                            help='''
                Explicitly allow client to perform "insecure" TLS
                (https) requests. The server's certificate will not be
                verified against any certificate authorities. This
@@ -402,14 +396,14 @@ class GlanceCPShell(object):
         ''')
 
         parser.add_argument('--timeout', default=False,
-            help="Set request timeout (in seconds).")
+                            help="Set request timeout (in seconds).")
 
         if initial:
-          argv_copy = copy.deepcopy(argv)
-          args, extra = parser.parse_known_args(argv_copy)
-          return args
+            argv_copy = copy.deepcopy(argv)
+            args, extra = parser.parse_known_args(argv_copy)
+            return args
         else:
-          return parser.parse_args(argv)
+            return parser.parse_args(argv)
 
     def _get_image_url(self, args):
         """Translate the available url-related options into a single string.
@@ -613,12 +607,12 @@ class GlanceCPShell(object):
                 interface=endpoint_type,
                 region_name=args.os_region_name)
 
-
         return glanceclient.Client(api_version, endpoint, **kwargs), description
 
     def authenticate_client(self, source_or_dest, args):
-        os_args = {k[len(source_or_dest)+1:] : v for k, v in vars(args).items() if k.startswith("%s_os_" % source_or_dest)}
-        for general_arg in ['insecure','timeout']:
+        os_args = {k[len(source_or_dest) + 1:]: v for k, v in vars(args).items() if
+                   k.startswith("%s_os_" % source_or_dest)}
+        for general_arg in ['insecure', 'timeout']:
             if general_arg in args:
                 os_args[general_arg] = getattr(args, general_arg)
         os_args['ssl_compression'] = True
@@ -722,7 +716,9 @@ class GlanceCPShell(object):
 
         # inform user we are copying
         # TODO: only if verbose?
-        print("copying source image %s ('%s') from %s to destination image '%s' on %s" % (source_image.id, source_image.name, source_client_desc, dest_image_properties['name'], dest_client_desc), file=sys.stderr)
+        print("copying source image %s ('%s') from %s to destination image '%s' on %s" % (
+        source_image.id, source_image.name, source_client_desc, dest_image_properties['name'], dest_client_desc),
+              file=sys.stderr)
 
         # create destination image
         try:
@@ -743,6 +739,7 @@ class GlanceCPShell(object):
         # tell the user the id of their new image
         print(dest_image.id)
 
+
 def debug_enabled(argv):
     if bool(utils.env('GLANCECP_DEBUG')) is True:
         return True
@@ -756,8 +753,10 @@ def data_to_upload_stream(data, buffer_size=io.DEFAULT_BUFFER_SIZE):
         def __init__(self, data_iter):
             self.remaining_data = None
             self.data_iter = data_iter
+
         def readable(self):
             return True
+
         def readinto(self, b):
             try:
                 max_chunk_size = len(b)
@@ -767,7 +766,9 @@ def data_to_upload_stream(data, buffer_size=io.DEFAULT_BUFFER_SIZE):
                 return len(output)
             except StopIteration:
                 return 0
+
     return io.BufferedReader(UploadStream(iter(data)), buffer_size=buffer_size)
+
 
 def main():
     try:
@@ -779,6 +780,7 @@ def main():
         if debug_enabled(argv) is True:
             traceback.print_exc()
         utils.exit(encodeutils.exception_to_unicode(e))
+
 
 if __name__ == "__main__":
     main()
