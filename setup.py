@@ -14,12 +14,12 @@ setup(
     packages=find_packages(exclude=["tests"]),
     install_requires = open("requirements.txt", "r").readline(),
     url="https://github.com/wtsi-hgi/openstack-tools",
-    license="TODO",
-    description="TODO",
+    license="GPL3",
+    description="Tools for working with OpenStack",
     long_description=read_markdown("README.md"),
     entry_points={
         "console_scripts": [
             "glancecp=openstacktools.glancecp:main"
-        ],
+        ]
     }
 )
