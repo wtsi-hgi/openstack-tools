@@ -387,8 +387,8 @@ class GlanceCPShell(object):
                               destination name and replace them with the
                               source image.
                  - "rename":  Rename any images already present with the
-                              destination name to make them unique. 
-                              Currently this is implemented with a 
+                              destination name to make them unique.
+                              Currently this is implemented with a
                               monotonically increasing integer suffix.
         ''')
         parser.add_argument("--duplicate_name_strategy",
@@ -620,13 +620,36 @@ class GlanceCPShell(object):
 
         return glanceclient.Client(api_version, endpoint, **kwargs), description
 
-    def authenticate_client(self, source_or_dest, args):
-        os_args = {k[len(source_or_dest)+1:] : v for k, v in vars(args).items() if k.startswith("%s_os_" % source_or_dest)}
+    def authenticate_client(self, source_or_dest, env_name, args):
+        os_args = {k[len(source_or_dest)+1:] :
+                   v for k, v in vars(args).items()
+                   if k.startswith("%s_os_" % source_or_dest)}
         for general_arg in ['insecure','timeout']:
             if general_arg in args:
                 os_args[general_arg] = getattr(args, general_arg)
         os_args['ssl_compression'] = True
         os_args['source_or_dest'] = source_or_dest
+        if env_name != "":
+            # check for potential conflicts between os_project_name set
+            # based on env_name and os_tenant_name specified in config
+            # or environment.
+            if (os_args['os_project_name'] != "" and
+                os_args['os_tenant_name'] != "" and
+                os_args['os_project_name'] != os_args['os_tenant_name']):
+                # resolve conflicts between os_project_name and os_tenant_name
+                # by keeping the one which is NOT the name of the environment
+                if os_args['os_project_name'] == env_name:
+                    os_args['os_project_name'] = ""
+                elif os_args['os_tenant_name'] == env_name:
+                    os_args['os_tenant_name'] = ""
+                else:
+                    utils.exit("Impossible situation attempting to resolve "
+                               "conflicts between os_project_name (%s), "
+                               "os_tenant_name (%s), and env_name (%s) for %s"
+                               % (os_args['os_project_name'],
+                                  os_args['os_tenant_name'],
+                                  env_name, source_or_dest))
+
         os_args = argparse.Namespace(**os_args)
 
         endpoint = None
@@ -665,8 +688,8 @@ class GlanceCPShell(object):
         args = self.parse_args(argv, initial=False, source_env=source_env, dest_env=dest_env, config=config)
 
         # authenticate glance client for source and dest environments
-        source_client, source_client_desc = self.authenticate_client("source", args)
-        dest_client, dest_client_desc = self.authenticate_client("dest", args)
+        source_client, source_client_desc = self.authenticate_client("source", source_env, args)
+        dest_client, dest_client_desc = self.authenticate_client("dest", dest_env, args)
 
         # find source image
         source_image = None
