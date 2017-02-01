@@ -90,14 +90,14 @@ class GlanceCPShell(object):
         env_name = ""
         id_or_name = ""
         # match <os_environment>:<image_id|image_name>
-        m = re.fullmatch('^(?P<env>[a-zA-Z0-9_]*):(?P<id_or_name>.*)$', spec)
+        m = re.fullmatch('^(?P<env>[a-zA-Z0-9_.-]*):(?P<id_or_name>.*)$', spec)
         if m:
             env_name = m.group('env')
             id_or_name = m.group('id_or_name')
             return env_name, id_or_name
 
         # match <os_environment>:"<image_id|image_name>" or <os_environment>:'<image_id|image_name>'
-        m = re.fullmatch('^(?P<env>[a-zA-Z0-9_]*):(["\'])(?P<id_or_name>.*)\2$', spec)
+        m = re.fullmatch('^(?P<env>[a-zA-Z0-9_.-]*):(["\'])(?P<id_or_name>.*)\2$', spec)
         if m:
             env_name = m.group('env')
             id_or_name = m.group('id_or_name')
@@ -133,9 +133,10 @@ class GlanceCPShell(object):
             value = utils.env(*env_params, default=None)
             if value:
                 return value
-            for param in params:
-                if param == "OS_PROJECT_NAME":
-                    return env_name
+            if "OS_PROJECT_NAME" in params:
+                return env_name
+            if "OS_TENANT_NAME" in params:
+                return env_name
         return utils.env(*params, default=default)
 
     def get_help(self, env_name, *params):
@@ -150,7 +151,7 @@ class GlanceCPShell(object):
                 defaults.append("env[%s_%s]" % (env_name, param))
         for param in params:
             if param == "OS_PROJECT_NAME":
-                defaults.append("the env_name in the specification (%s)" % (env_name))
+                defaults.append("the env_name in the specification ('%s')" % (env_name))
         for param in params:
             defaults.append("env[%s]" % (param))
         if len(defaults) > 1:
@@ -204,27 +205,31 @@ class GlanceCPShell(object):
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--%s-os-project-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_NAME'),
-                            help=self.get_help(env_name, 'OS_PROJECT_NAME'))
+                            default=self.get_default(env_name, config, 'OS_PROJECT_NAME', 'OS_TENANT_NAME'),
+                            help=self.get_help(env_name, 'OS_PROJECT_NAME', 'OS_TENANT_NAME'))
 
         parser.add_argument('--%s_os_project_name' % source_or_dest,
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--%s-os-project-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_ID'),
-                            help=self.get_help(env_name, 'OS_PROJECT_ID'))
+                            default=self.get_default(env_name, config, 'OS_PROJECT_ID', 'OS_TENANT_ID'),
+                            help=self.get_help(env_name, 'OS_PROJECT_ID', 'OS_TENANT_ID'))
 
         parser.add_argument('--%s_os_project_id' % source_or_dest,
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--%s-os-tenant-name' % source_or_dest,
-                            '--%s_os_tenant_name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_TENANT_NAME'),
+                            default=self.get_default(env_name, config, 'OS_TENANT_NAME', 'OS_PROJECT_NAME'),
+                            help=self.get_help(env_name, 'OS_TENANT_NAME', 'OS_PROJECT_NAME'))
+
+        parser.add_argument('--%s_os_tenant_name' % source_or_dest,
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--%s-os-tenant-id' % source_or_dest,
-                            '--%s_os_tenant_id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_TENANT_ID'),
+                            default=self.get_default(env_name, config, 'OS_TENANT_ID', 'OS_PROJECT_ID'),
+                            help=self.get_help(env_name, 'OS_TENANT_ID', 'OS_PROJECT_ID'))
+
+        parser.add_argument('--%s_os_tenant_id' % source_or_dest,
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--%s-os-project-domain-name' % source_or_dest,
@@ -324,7 +329,7 @@ class GlanceCPShell(object):
                A specification of the source image, in the format
                [<os_environment>:]<image_id|image_name>, where <os_environment>
                names an OpenStack environment from which to copy the source image
-               which must match the regex [a-zA-Z0-9_]+ and <image_id|image_name>
+               which must match the regex [a-zA-Z0-9_.-]+ and <image_id|image_name>
                can optionally be single or double-quoted.
         ''')
 
@@ -332,7 +337,7 @@ class GlanceCPShell(object):
                A specification of the destination image, in the format
                [<os_environment>:]<image_id|image_name>, where <os_environment>
                names an OpenStack environment from which to copy the source image
-               which must match the regex [a-zA-Z0-9_]+ and <image_id|image_name>
+               which must match the regex [a-zA-Z0-9_.-]+ and <image_id|image_name>
                can optionally be single or double-quoted.
         ''')
 
@@ -629,27 +634,6 @@ class GlanceCPShell(object):
                 os_args[general_arg] = getattr(args, general_arg)
         os_args['ssl_compression'] = True
         os_args['source_or_dest'] = source_or_dest
-        if env_name != "":
-            # check for potential conflicts between os_project_name set
-            # based on env_name and os_tenant_name specified in config
-            # or environment.
-            if (os_args['os_project_name'] != "" and
-                os_args['os_tenant_name'] != "" and
-                os_args['os_project_name'] != os_args['os_tenant_name']):
-                # resolve conflicts between os_project_name and os_tenant_name
-                # by keeping the one which is NOT the name of the environment
-                if os_args['os_project_name'] == env_name:
-                    os_args['os_project_name'] = ""
-                elif os_args['os_tenant_name'] == env_name:
-                    os_args['os_tenant_name'] = ""
-                else:
-                    utils.exit("Impossible situation attempting to resolve "
-                               "conflicts between os_project_name (%s), "
-                               "os_tenant_name (%s), and env_name (%s) for %s"
-                               % (os_args['os_project_name'],
-                                  os_args['os_tenant_name'],
-                                  env_name, source_or_dest))
-
         os_args = argparse.Namespace(**os_args)
 
         endpoint = None
@@ -730,6 +714,10 @@ class GlanceCPShell(object):
         else:
             dest_image_properties['name'] = source_image['name']
 
+        # inform user what we we plan on copying
+        # TODO: only if verbose?
+        print("copying source image %s ('%s') from %s to destination image '%s' on %s" % (source_image.id, source_image.name, source_client_desc, dest_image_properties['name'], dest_client_desc), file=sys.stderr)
+
         # check for duplicates and plan strategy to deal with them
         delete_images = []
         rename_images = []
@@ -775,10 +763,6 @@ class GlanceCPShell(object):
             except exc.BaseException as e:
                 utils.exit("Failed to rename existing image (exception type %s): %s" % (type(e), e))
 
-        # inform user we are copying
-        # TODO: only if verbose?
-        print("copying source image %s ('%s') from %s to destination image '%s' on %s" % (source_image.id, source_image.name, source_client_desc, dest_image_properties['name'], dest_client_desc), file=sys.stderr)
-
         # create destination image
         try:
             dest_image = dest_client.images.create(**dest_image_properties)
@@ -792,13 +776,17 @@ class GlanceCPShell(object):
         # copy data from source to destination
         failure_reason = ""
         try:
-            dest_client.images.upload(dest_image.id, data_to_upload_stream(source_client.images.data(source_image.id)))
+            data = source_client.images.data(source_image.id)
+            if data is not None:
+                dest_client.images.upload(dest_image.id, data_to_upload_stream(data))
+            else:
+                print("WARNING: source image %s contained no data" % (source_image.id), file=sys.stderr)
         except exc.CommunicationError as ce:
             failure_reason = "Communication error while attempting to transfer image: %s" % (ce)
         except exc.HTTPInternalServerError as hise:
             failure_reason = "Internal server error while attempting to transfer image: %s" % (hise)
         except exc.BaseException as ue:
-            failure_reason = "Failed to upload image (exception type %s): %s" % (type(ue), ue)
+            failure_reason = "Failed to transfer image (exception type %s): %s" % (type(ue), ue)
 
         if failure_reason != "":
             try:
