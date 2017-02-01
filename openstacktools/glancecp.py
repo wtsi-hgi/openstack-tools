@@ -129,10 +129,11 @@ class GlanceCPShell(object):
             value = utils.env(*env_params, default=None)
             if value:
                 return value
-            if "OS_PROJECT_NAME" in params:
-                return env_name
-            if "OS_TENANT_NAME" in params:
-                return env_name
+            for param in params:
+                if param == "OS_PROJECT_NAME":
+                    return env_name
+                if param == "OS_TENANT_NAME":
+                    return env_name
         return utils.env(*params, default=default)
 
     def get_help(self, env_name, *params):
@@ -145,8 +146,7 @@ class GlanceCPShell(object):
         if env_name != "":
             for param in params:
                 defaults.append("env[%s_%s]" % (env_name, param))
-        for param in params:
-            if param == "OS_PROJECT_NAME":
+            if "OS_PROJECT_NAME" in params or "OS_TENANT_NAME" in params:
                 defaults.append("the env_name in the specification ('%s')" % (env_name))
         for param in params:
             defaults.append("env[%s]" % (param))
@@ -205,6 +205,8 @@ class GlanceCPShell(object):
                             help=self.get_help(env_name, 'OS_PROJECT_NAME', 'OS_TENANT_NAME'))
 
         parser.add_argument('--%s_os_project_name' % source_or_dest,
+                            '--%s-os-tenant-name' % source_or_dest,
+                            '--%s_os_tenant_name' % source_or_dest,
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--%s-os-project-id' % source_or_dest,
@@ -212,20 +214,8 @@ class GlanceCPShell(object):
                             help=self.get_help(env_name, 'OS_PROJECT_ID', 'OS_TENANT_ID'))
 
         parser.add_argument('--%s_os_project_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-tenant-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_TENANT_NAME', 'OS_PROJECT_NAME'),
-                            help=self.get_help(env_name, 'OS_TENANT_NAME', 'OS_PROJECT_NAME'))
-
-        parser.add_argument('--%s_os_tenant_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-tenant-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_TENANT_ID', 'OS_PROJECT_ID'),
-                            help=self.get_help(env_name, 'OS_TENANT_ID', 'OS_PROJECT_ID'))
-
-        parser.add_argument('--%s_os_tenant_id' % source_or_dest,
+                            '--%s-os-tenant-id' % source_or_dest,
+                            '--%s_os_tenant_id' % source_or_dest,
                             help=argparse.SUPPRESS)
 
         parser.add_argument('--%s-os-project-domain-name' % source_or_dest,
@@ -544,22 +534,6 @@ class GlanceCPShell(object):
                 raise exc.CommandError(
                     _("You must provide a password for %s" % args.source_or_dest))
 
-        # Validate password flow auth
-        project_info = (
-            args.os_tenant_name or args.os_tenant_id or (
-                args.os_project_name and (
-                    args.os_project_domain_name or
-                    args.os_project_domain_id
-                )
-            ) or args.os_project_id
-        )
-
-        if not project_info:
-            print("no project_info: args=[%s]" % args)
-            raise exc.CommandError(
-                _("You must provide a project_id or a project_name"
-                  "with either project_domain_name or project_domain_id for %s" % args.source_or_dest))
-
         if not args.os_auth_url:
             raise exc.CommandError(
                 _("You must provide an auth url for %s" % args.source_or_dest))
@@ -571,8 +545,6 @@ class GlanceCPShell(object):
             'user_domain_id': args.os_user_domain_id,
             'user_domain_name': args.os_user_domain_name,
             'password': args.os_password,
-            'tenant_name': args.os_tenant_name,
-            'tenant_id': args.os_tenant_id,
             'project_name': args.os_project_name,
             'project_id': args.os_project_id,
             'project_domain_name': args.os_project_domain_name,
