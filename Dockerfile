@@ -8,6 +8,9 @@ RUN apt-get update \
          apt-utils \
          software-properties-common \
     && apt-get install -y --no-install-recommends \
+         gcc \
+         git \
+         python3-dev \
          python3-setuptools \
     && rm -rf /var/lib/apt/lists/*
 
