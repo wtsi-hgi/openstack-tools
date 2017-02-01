@@ -750,7 +750,8 @@ def debug_enabled(argv):
 
 def data_to_upload_stream(data, buffer_size=io.DEFAULT_BUFFER_SIZE):
     class UploadStream(io.RawIOBase):
-        def __init__(self, data_iter):
+        def __init__(self, data_iter, *args, **kwargs):
+            super().__init__(*args, **kwargs)
             self.remaining_data = None
             self.data_iter = data_iter
 
@@ -771,8 +772,8 @@ def data_to_upload_stream(data, buffer_size=io.DEFAULT_BUFFER_SIZE):
 
 
 def main():
+    argv = [encodeutils.safe_decode(a) for a in sys.argv[1:]]
     try:
-        argv = [encodeutils.safe_decode(a) for a in sys.argv[1:]]
         GlanceCPShell().main(argv)
     except KeyboardInterrupt:
         utils.exit('... terminating glancecp', exit_code=130)
