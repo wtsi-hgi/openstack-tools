@@ -12,7 +12,7 @@ setup(
     name="openstack-tools",
     version="0.1.0",
     packages=find_packages(exclude=["tests"]),
-    install_requires = open("requirements.txt", "r").readline(),
+    install_requires=open("requirements.txt", "r").readlines(),
     url="https://github.com/wtsi-hgi/openstack-tools",
     license="GPL3",
     description="Tools for working with OpenStack",
