@@ -653,9 +653,9 @@ class GlanceCPShell(object):
                         source_image = source_client.images.get(image.id)
                         found = True
         except exc.CommunicationError as ce:
-            utils.exit("Communication error while attempting to get source image: %s" (ce))
+            utils.exit("Communication error while attempting to get source image: %s" % (ce))
         except exc.HTTPInternalServerError as hise:
-            utils.exit("Internal server error while attempting to get source image: %s" (hise))
+            utils.exit("Internal server error while attempting to get source image: %s" % (hise))
 
         if not source_image:
             utils.exit("Source image not found: %s" % source_id_or_name)
@@ -723,9 +723,9 @@ class GlanceCPShell(object):
             try:
                 dest_client.images.update(image_id, name=new_name)
             except exc.CommunicationError as ce:
-                utils.exit("Communication error while attempting to rename existing image: %s" (ce))
+                utils.exit("Communication error while attempting to rename existing image: %s" % (ce))
             except exc.HTTPInternalServerError as hise:
-                utils.exit("Internal server error while attempting to rename existing image: %s" (hise))
+                utils.exit("Internal server error while attempting to rename existing image: %s" % (hise))
             except exc.BaseException as e:
                 utils.exit("Failed to rename existing image (exception type %s): %s" % (type(e), e))
 
@@ -733,9 +733,9 @@ class GlanceCPShell(object):
         try:
             dest_image = dest_client.images.create(**dest_image_properties)
         except exc.CommunicationError as ce:
-            utils.exit("Communication error while attempting to create image: %s" (ce))
+            utils.exit("Communication error while attempting to create image: %s" % (ce))
         except exc.HTTPInternalServerError as hise:
-            utils.exit("Internal server error while attempting to create image: %s" (hise))
+            utils.exit("Internal server error while attempting to create image: %s" % (hise))
         except exc.BaseException as e:
             utils.exit("Failed to create destination image (exception type %s): %s" % (type(e), e))
 
@@ -758,9 +758,9 @@ class GlanceCPShell(object):
             try:
                 dest_client.images.delete(dest_image.id)
             except exc.CommunicationError as ce:
-                utils.exit("%s. In addition, there was a communication error while attempting to delete image after upload failed: %s" (failure_reason, ce))
+                utils.exit("%s. In addition, there was a communication error while attempting to delete image after upload failed: %s" % (failure_reason, ce))
             except exc.HTTPInternalServerError as hise:
-                utils.exit("%s. In addition, there was an internal server error while attempting to delete image after upload failed: %s" (failure_reason, hise))
+                utils.exit("%s. In addition, there was an internal server error while attempting to delete image after upload failed: %s" % (failure_reason, hise))
             except Exception as de:
                 utils.exit("%s. In addition, failed to delete image after upload failed (exception type %s): %s" % (failure_reason, type(de), de))
             utils.exit(failure_reason)
@@ -771,11 +771,11 @@ class GlanceCPShell(object):
             try:
                 dest_client.images.delete(image_id)
             except exc.CommunicationError as ce:
-                utils.exit("Communication error while attempting to delete image %s with duplicate name: %s" (image_id, ce))
+                utils.exit("Communication error while attempting to delete image %s with duplicate name: %s" % (image_id, ce))
             except exc.HTTPInternalServerError as hise:
-                utils.exit("Internal server error while attempting to delete image %s with duplicate name: %s" (image_id, hise))
+                utils.exit("Internal server error while attempting to delete image %s with duplicate name: %s" % (image_id, hise))
             except exc.HTTPConflict as hc:
-                utils.exit("Conflict while attempting to delete image %s with duplicate name: %s" (image_id, hc))
+                utils.exit("Conflict while attempting to delete image %s with duplicate name: %s" % (image_id, hc))
             except exc.BaseException as e:
                 utils.exit("Failed to delete image %s with duplicate "
                            "name (exception type %s): %s" % (image_id, type(e), e))
