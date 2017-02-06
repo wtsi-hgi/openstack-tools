@@ -53,6 +53,7 @@ import os.path
 import re
 import sys
 import traceback
+import random
 from configparser import ConfigParser
 
 import glanceclient
@@ -717,7 +718,7 @@ class GlanceCPShell(object):
         suffix = 1
         for image_id in rename_images:
             while "%s.%s" % (dest_image_properties['name'], suffix) in image_names:
-                suffix += 1
+                suffix = '%08x' % random.randrange(16**8)
             new_name = "%s.%s" % (dest_image_properties['name'], suffix)
             print("renaming existing image %s to '%s'" % (image_id, new_name), file=sys.stderr)
             try:
