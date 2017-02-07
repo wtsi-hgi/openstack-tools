@@ -54,6 +54,8 @@ import re
 import sys
 import traceback
 import random
+import time
+
 from configparser import ConfigParser
 
 import glanceclient
@@ -61,11 +63,12 @@ import six.moves.urllib.parse as urlparse
 from glanceclient import exc
 from glanceclient._i18n import _
 from glanceclient.common import utils
-from keystoneclient import discover
-from keystoneclient import exceptions as ks_exc
-from keystoneclient import session
-from keystoneclient.auth.identity import v2 as v2_auth
-from keystoneclient.auth.identity import v3 as v3_auth
+
+from keystoneauth1 import discover
+from keystoneauth1 import exceptions as ks_exc
+from keystoneauth1.identity import v2 as v2_auth
+from keystoneauth1.identity import v3 as v3_auth
+from keystoneauth1 import loading
 from oslo_utils import encodeutils
 
 SUPPORTED_VERSIONS = [1, 2]
@@ -447,7 +450,11 @@ class GlanceCPShell(object):
         return (v2_auth_url, v3_auth_url)
 
     def _get_keystone_session(self, **kwargs):
-        ks_session = session.Session.construct(kwargs)
+        def option_getter(opt):
+            if opt.dest in kwargs:
+                return kwargs[opt.dest]
+            return
+        ks_session = loading.session.Session().load_from_options_getter(option_getter)
         ks_desc = ""
 
         # discover the supported keystone versions using the given auth url
@@ -730,7 +737,9 @@ class GlanceCPShell(object):
                 utils.exit("Communication error while attempting to rename existing image: %s" % (ce))
             except exc.HTTPInternalServerError as hise:
                 utils.exit("Internal server error while attempting to rename existing image: %s" % (hise))
-            except exc.BaseException as e:
+            except exc.HTTPException as he:
+                utils.exit("HTTP error while attempting to rename: %s" % (he))
+            except Exception as e:
                 utils.exit("Failed to rename existing image (exception type %s): %s" % (type(e), e))
 
         # create destination image
@@ -741,7 +750,7 @@ class GlanceCPShell(object):
             utils.exit("Communication error while attempting to create image: %s" % (ce))
         except exc.HTTPInternalServerError as hise:
             utils.exit("Internal server error while attempting to create image: %s" % (hise))
-        except exc.BaseException as e:
+        except Exception as e:
             utils.exit("Failed to create destination image (exception type %s): %s" % (type(e), e))
 
         # copy data from source to destination
@@ -757,7 +766,7 @@ class GlanceCPShell(object):
             failure_reason = "Communication error while attempting to transfer image: %s" % (ce)
         except exc.HTTPInternalServerError as hise:
             failure_reason = "Internal server error while attempting to transfer image: %s" % (hise)
-        except exc.BaseException as ue:
+        except Exception as ue:
             failure_reason = "Failed to transfer image (exception type %s): %s" % (type(ue), ue)
 
         if failure_reason != "":
@@ -782,7 +791,7 @@ class GlanceCPShell(object):
                 utils.exit("Internal server error while attempting to delete image %s with duplicate name: %s" % (image_id, hise))
             except exc.HTTPConflict as hc:
                 utils.exit("Conflict while attempting to delete image %s with duplicate name: %s" % (image_id, hc))
-            except exc.BaseException as e:
+            except Exception as e:
                 utils.exit("Failed to delete image %s with duplicate "
                            "name (exception type %s): %s" % (image_id, type(e), e))
 
