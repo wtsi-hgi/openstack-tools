@@ -54,6 +54,8 @@ import re
 import sys
 import traceback
 import random
+import time
+
 from configparser import ConfigParser
 
 import glanceclient
@@ -735,7 +737,9 @@ class GlanceCPShell(object):
                 utils.exit("Communication error while attempting to rename existing image: %s" % (ce))
             except exc.HTTPInternalServerError as hise:
                 utils.exit("Internal server error while attempting to rename existing image: %s" % (hise))
-            except exc.BaseException as e:
+            except exc.HTTPException as he:
+                utils.exit("HTTP error while attempting to rename: %s" % (he))
+            except Exception as e:
                 utils.exit("Failed to rename existing image (exception type %s): %s" % (type(e), e))
 
         # create destination image
@@ -746,7 +750,7 @@ class GlanceCPShell(object):
             utils.exit("Communication error while attempting to create image: %s" % (ce))
         except exc.HTTPInternalServerError as hise:
             utils.exit("Internal server error while attempting to create image: %s" % (hise))
-        except exc.BaseException as e:
+        except Exception as e:
             utils.exit("Failed to create destination image (exception type %s): %s" % (type(e), e))
 
         # copy data from source to destination
@@ -762,7 +766,7 @@ class GlanceCPShell(object):
             failure_reason = "Communication error while attempting to transfer image: %s" % (ce)
         except exc.HTTPInternalServerError as hise:
             failure_reason = "Internal server error while attempting to transfer image: %s" % (hise)
-        except exc.BaseException as ue:
+        except Exception as ue:
             failure_reason = "Failed to transfer image (exception type %s): %s" % (type(ue), ue)
 
         if failure_reason != "":
@@ -787,7 +791,7 @@ class GlanceCPShell(object):
                 utils.exit("Internal server error while attempting to delete image %s with duplicate name: %s" % (image_id, hise))
             except exc.HTTPConflict as hc:
                 utils.exit("Conflict while attempting to delete image %s with duplicate name: %s" % (image_id, hc))
-            except exc.BaseException as e:
+            except Exception as e:
                 utils.exit("Failed to delete image %s with duplicate "
                            "name (exception type %s): %s" % (image_id, type(e), e))
 
