@@ -622,6 +622,9 @@ class GlanceCPShell(object):
         client, client_desc = self._get_versioned_client(api_version, os_args)
         return client, client_desc
 
+    def random_suffix(self):
+        return '%08x' % random.randrange(16**8)
+
     def main(self, argv):
         # parse args initially with no help option and ignoring unknown
         init_args = self.parse_args(argv, initial=True)
@@ -715,10 +718,10 @@ class GlanceCPShell(object):
                     else:
                         raise ValueError("Unexpected value for '--duplicate-name-strategy': %s", args.duplicate_name_strategy)
 
-        suffix = 1
+        suffix = self.random_suffix()
         for image_id in rename_images:
             while "%s.%s" % (dest_image_properties['name'], suffix) in image_names:
-                suffix = '%08x' % random.randrange(16**8)
+                suffix = random_suffix()
             new_name = "%s.%s" % (dest_image_properties['name'], suffix)
             print("renaming existing image %s to '%s'" % (image_id, new_name), file=sys.stderr)
             try:
@@ -731,6 +734,7 @@ class GlanceCPShell(object):
                 utils.exit("Failed to rename existing image (exception type %s): %s" % (type(e), e))
 
         # create destination image
+        print("creating image at destination: %s" % (dest_image_properties['name']), file=sys.stderr)
         try:
             dest_image = dest_client.images.create(**dest_image_properties)
         except exc.CommunicationError as ce:
@@ -742,6 +746,7 @@ class GlanceCPShell(object):
 
         # copy data from source to destination
         failure_reason = ""
+        print("copying data from source image %s to destination image %s" % (source_image.id, dest_image.id), file=sys.stderr)
         try:
             data = source_client.images.data(source_image.id)
             if data is not None:
