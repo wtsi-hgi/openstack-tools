@@ -61,11 +61,12 @@ import six.moves.urllib.parse as urlparse
 from glanceclient import exc
 from glanceclient._i18n import _
 from glanceclient.common import utils
-from keystoneclient import discover
-from keystoneclient import exceptions as ks_exc
-from keystoneclient import session
-from keystoneclient.auth.identity import v2 as v2_auth
-from keystoneclient.auth.identity import v3 as v3_auth
+
+from keystoneauth1 import discover
+from keystoneauth1 import exceptions as ks_exc
+from keystoneauth1.identity import v2 as v2_auth
+from keystoneauth1.identity import v3 as v3_auth
+from keystoneauth1 import loading
 from oslo_utils import encodeutils
 
 SUPPORTED_VERSIONS = [1, 2]
@@ -447,7 +448,11 @@ class GlanceCPShell(object):
         return (v2_auth_url, v3_auth_url)
 
     def _get_keystone_session(self, **kwargs):
-        ks_session = session.Session.construct(kwargs)
+        def option_getter(opt):
+            if opt.dest in kwargs:
+                return kwargs[opt.dest]
+            return
+        ks_session = loading.session.Session().load_from_options_getter(option_getter)
         ks_desc = ""
 
         # discover the supported keystone versions using the given auth url
