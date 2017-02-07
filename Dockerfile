@@ -11,8 +11,6 @@ RUN apt-get update \
          gcc \
          git \
          python3-dev \
-         python3-glanceclient \
-         python3-keystoneauth1 \
          python3-setuptools \
     && rm -rf /var/lib/apt/lists/*
 
