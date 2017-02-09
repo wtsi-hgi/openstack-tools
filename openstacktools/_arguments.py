@@ -1,11 +1,12 @@
 import argparse
+from configparser import ConfigParser
 
 from glanceclient.common import utils
 
 
-def add_openstack_args(parser, env_name, config, prefix):
-    hyphen_prefix = "%s-" % prefix
-    underscore_prefix = "%s_" % prefix
+def add_openstack_args(parser, env_name="", config=ConfigParser(), prefix=None):
+    hyphen_prefix = "%s-" % prefix if prefix else ""
+    underscore_prefix = "%s_" % prefix if prefix else ""
 
     parser.add_argument('--%sos-auth-url' % hyphen_prefix,
                         default=get_default(config, 'OS_AUTH_URL', env_name=env_name),
