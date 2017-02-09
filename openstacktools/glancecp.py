@@ -58,7 +58,8 @@ from glanceclient import exc
 from glanceclient.common import utils
 from oslo_utils import encodeutils
 
-from openstacktools.client import create_authenticated_client
+from openstacktools._arguments import add_openstack_args
+from openstacktools._client import create_authenticated_client
 
 
 class GlanceCPShell:
@@ -97,201 +98,6 @@ class GlanceCPShell:
             return env_name, id_or_name
 
         raise ValueError("Failed to parse specification [%s]" % spec)
-
-    def env_section(self, env_name):
-        section = env_name
-        if section == "":
-            section = "common"
-        return section
-
-    def get_default(self, env_name, config, *params, default=""):
-        # try to get each param in the *params list in order from env_name section of config (or the common section if env_name is empty)
-        # failing that, if env_name is not empty try to get it from an environment variable named <ENV>_<PARAM> (e.g. myenv_OS_AUTH_URL)
-        # failing that, for OS_PROJECT_NAME if env_name is not empty set it to env_name
-        # failing that, try to get it from an environment variable named <PARAM> (e.g. OS_AUTH_URL)
-        # failing that, return the value given in the default keyword argument
-        section = self.env_section(env_name)
-        for param in params:
-            value = config.get(section, param, fallback=None)
-            if value:
-                return value
-        if env_name != "":
-            env_params = [('%s_%s' % (env_name, param)) for param in params]
-            value = utils.env(*env_params, default=None)
-            if value:
-                return value
-            for param in params:
-                if param == "OS_PROJECT_NAME":
-                    return env_name
-                if param == "OS_TENANT_NAME":
-                    return env_name
-        return utils.env(*params, default=default)
-
-    def get_help(self, env_name, *params):
-        if len(params) == 0:
-            raise ValueError("get_help called with no params")
-        defaults = []
-        section = self.env_section(env_name)
-        for param in params:
-            defaults.append("config option %s in section [%s]" % (param, section))
-        if env_name != "":
-            for param in params:
-                defaults.append("env[%s_%s]" % (env_name, param))
-            if "OS_PROJECT_NAME" in params or "OS_TENANT_NAME" in params:
-                defaults.append("the env_name in the specification ('%s')" % (env_name))
-        for param in params:
-            defaults.append("env[%s]" % (param))
-        if len(defaults) > 1:
-            defaults[-1] = "or " + defaults[-1]
-        return 'Defaults to: %s' % (', '.join(defaults))
-
-    def add_openstack_args(self, parser, source_or_dest, env_name, config):
-        parser.add_argument('--%s-os-auth-url' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_AUTH_URL'),
-                            help=self.get_help(env_name, 'OS_AUTH_URL'))
-
-        parser.add_argument('--%s_os_auth_url' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-username' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USERNAME'),
-                            help=self.get_help(env_name, 'OS_USERNAME'))
-
-        parser.add_argument('--%s_os_username' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-user-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USER_ID'),
-                            help=self.get_help(env_name, 'OS_USER_ID'))
-
-        parser.add_argument('--%s_os_user_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-user-domain-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USER_DOMAIN_NAME'),
-                            help=self.get_help(env_name, 'OS_USER_DOMAIN_NAME'))
-
-        parser.add_argument('--%s_os_user_domain_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-user-domain-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USER_DOMAIN_ID'),
-                            help=self.get_help(env_name, 'OS_USER_DOMAIN_ID'))
-
-        parser.add_argument('--%s_os_user_domain_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-password' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PASSWORD'),
-                            help=self.get_help(env_name, 'OS_PASSWORD') + '''
-                               WARNING: specifying your password on the command-line
-                               may expose it to other users on the same machine.
-                            ''')
-
-        parser.add_argument('--%s_os_password' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_NAME', 'OS_TENANT_NAME'),
-                            help=self.get_help(env_name, 'OS_PROJECT_NAME', 'OS_TENANT_NAME'))
-
-        parser.add_argument('--%s_os_project_name' % source_or_dest,
-                            '--%s-os-tenant-name' % source_or_dest,
-                            '--%s_os_tenant_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_ID', 'OS_TENANT_ID'),
-                            help=self.get_help(env_name, 'OS_PROJECT_ID', 'OS_TENANT_ID'))
-
-        parser.add_argument('--%s_os_project_id' % source_or_dest,
-                            '--%s-os-tenant-id' % source_or_dest,
-                            '--%s_os_tenant_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-domain-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_DOMAIN_NAME'),
-                            help=self.get_help(env_name, 'OS_PROJECT_DOMAIN_NAME'))
-
-        parser.add_argument('--%s_os_project_domain_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-domain-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_DOMAIN_ID'),
-                            help=self.get_help(env_name, 'OS_PROJECT_DOMAIN_ID'))
-
-        parser.add_argument('--%s_os_project_domain_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-region-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_REGION_NAME'),
-                            help=self.get_help(env_name, 'OS_REGION_NAME'))
-
-        parser.add_argument('--%s_os_region_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-auth-token' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_AUTH_TOKEN'),
-                            help=self.get_help(env_name, 'OS_AUTH_TOKEN'))
-
-        parser.add_argument('--%s_os_auth_token' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-auth-type' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_AUTH_TYPE'),
-                            help=self.get_help(env_name, 'OS_AUTH_TYPE'))
-
-        parser.add_argument('--%s_os_auth_type' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-service-type' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_SERVICE_TYPE'),
-                            help=self.get_help(env_name, 'OS_SERVICE_TYPE'))
-
-        parser.add_argument('--%s_os_service_type' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-endpoint-type' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_ENDPOINT_TYPE'),
-                            help=self.get_help(env_name, 'OS_ENDPOINT_TYPE'))
-
-        parser.add_argument('--%s_os_endpoint_type' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-cacert' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_CACERT'),
-                            help=self.get_help(env_name, 'OS_CACERT'))
-
-        parser.add_argument('--%s_os_cacert' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-cert' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_CERT'),
-                            help=self.get_help(env_name, 'OS_CERT'))
-
-        parser.add_argument('--%s_os_cert' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-key' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_KEY'),
-                            help=self.get_help(env_name, 'OS_KEY'))
-
-        parser.add_argument('--%s_os_key' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-image-url' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_IMAGE_URL'),
-                            help=self.get_help(env_name, 'OS_IMAGE_URL'))
-
-        parser.add_argument('--%s_os_image_url' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-image-api-version' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_IMAGE_API_VERSION', default="2"),
-                            help=self.get_help(env_name, 'OS_IMAGE_API_VERSION'))
-
-        parser.add_argument('--%s_os_image_api_version' % source_or_dest,
-                            help=argparse.SUPPRESS)
 
     def parse_args(self, argv, initial=True, source_env="", dest_env="", config=ConfigParser()):
         parser = argparse.ArgumentParser(
@@ -374,8 +180,8 @@ class GlanceCPShell:
         parser.add_argument("--duplicate_name_strategy",
                             help=argparse.SUPPRESS)
 
-        self.add_openstack_args(parser, "source", source_env, config)
-        self.add_openstack_args(parser, "dest", dest_env, config)
+        add_openstack_args(parser, source_env, config, prefix="source")
+        add_openstack_args(parser, dest_env, config, prefix="dest")
 
         parser.add_argument('--insecure', default=False,
                             help='''
