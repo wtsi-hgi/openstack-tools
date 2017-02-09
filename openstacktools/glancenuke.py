@@ -102,7 +102,7 @@ def _parse_args(args: List[str]):
     :return: namespace containing the arguments
     """
     parser = argparse.ArgumentParser(
-        prog="nuke",
+        prog="glancenuke",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     add_openstack_args(parser)
 

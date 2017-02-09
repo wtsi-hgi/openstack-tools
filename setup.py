@@ -19,7 +19,8 @@ setup(
     long_description=read_markdown("README.md"),
     entry_points={
         "console_scripts": [
-            "glancecp=openstacktools.glancecp:main"
+            "glancecp=openstacktools.glancecp:main",
+            "glancenuke=openstacktools.glancenuke:main"
         ]
     }
 )
