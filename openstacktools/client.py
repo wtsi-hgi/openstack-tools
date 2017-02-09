@@ -13,7 +13,7 @@ import six.moves.urllib.parse as urlparse
 SUPPORTED_VERSIONS = [1, 2]
 
 
-def authenticate_client(source_or_dest, env_name, args):
+def authenticate_client(source_or_dest, args):
     os_args = {k[len(source_or_dest) + 1:]: v for k, v in vars(args).items() if
                k.startswith("%s_os_" % source_or_dest)}
     for general_arg in ['insecure', 'timeout']:

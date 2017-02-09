@@ -410,8 +410,8 @@ class GlanceCPShell:
         args = self.parse_args(argv, initial=False, source_env=source_env, dest_env=dest_env, config=config)
 
         # authenticate glance client for source and dest environments
-        source_client, source_client_desc = authenticate_client("source", source_env, args)
-        dest_client, dest_client_desc = authenticate_client("dest", dest_env, args)
+        source_client, source_client_desc = authenticate_client("source", args)
+        dest_client, dest_client_desc = authenticate_client("dest", args)
 
         # find source image
         source_image = None
