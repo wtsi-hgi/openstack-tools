@@ -13,27 +13,22 @@ import six.moves.urllib.parse as urlparse
 SUPPORTED_VERSIONS = [1, 2]
 
 
-def authenticate_client(source_or_dest, args):
-    os_args = {k[len(source_or_dest) + 1:]: v for k, v in vars(args).items() if
-               k.startswith("%s_os_" % source_or_dest)}
-    for general_arg in ['insecure', 'timeout']:
-        if general_arg in args:
-            os_args[general_arg] = getattr(args, general_arg)
-    os_args['ssl_compression'] = True
-    os_args['source_or_dest'] = source_or_dest
-    os_args = argparse.Namespace(**os_args)
+def create_authenticated_client(args, name="glance client"):
+    args['ssl_compression'] = True
+    args['name'] = name
+    args = argparse.Namespace(**args)
 
     endpoint = None
     url_version = None
     try:
-        if os_args.os_image_url:
-            endpoint = os_args.os_image_url
+        if args.os_image_url:
+            endpoint = args.os_image_url
         endpoint, url_version = utils.strip_version(endpoint)
     except ValueError:
         pass
 
     try:
-        api_version = int(os_args.os_image_api_version or url_version or 2)
+        api_version = int(args.os_image_api_version or url_version or 2)
         if api_version not in SUPPORTED_VERSIONS:
             raise ValueError
     except ValueError:
@@ -41,7 +36,7 @@ def authenticate_client(source_or_dest, args):
                "Supported values are %s" % SUPPORTED_VERSIONS)
         utils.exit(msg=msg)
 
-    client, client_desc = _get_versioned_client(api_version, os_args)
+    client, client_desc = _get_versioned_client(api_version, args)
     return client, client_desc
 
 
@@ -197,25 +192,25 @@ def _get_keystone_session(**kwargs):
 def _get_kwargs_for_create_session(args):
     if not args.os_username:
         raise exc.CommandError(
-            _("You must provide a username for %s" % args.source_or_dest))
+            _("You must provide a username for %s" % args.name))
 
     if not args.os_password:
         # No password, If we've got a tty, try prompting for it
         if hasattr(sys.stdin, 'isatty') and sys.stdin.isatty():
             # Check for Ctl-D
             try:
-                args.os_password = getpass.getpass('OS Password for %s: ' % args.source_or_dest)
+                args.os_password = getpass.getpass('OS Password for %s: ' % args.name)
             except EOFError:
                 pass
         # No password because we didn't have a tty or the
         # user Ctl-D when prompted.
         if not args.os_password:
             raise exc.CommandError(
-                _("You must provide a password for %s" % args.source_or_dest))
+                _("You must provide a password for %s" % args.name))
 
     if not args.os_auth_url:
         raise exc.CommandError(
-            _("You must provide an auth url for %s" % args.source_or_dest))
+            _("You must provide an auth url for %s" % args.name))
 
     kwargs = {
         'auth_url': args.os_auth_url,

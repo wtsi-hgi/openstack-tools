@@ -58,7 +58,7 @@ from glanceclient import exc
 from glanceclient.common import utils
 from oslo_utils import encodeutils
 
-from openstacktools.client import authenticate_client
+from openstacktools.client import create_authenticated_client
 
 
 class GlanceCPShell:
@@ -395,6 +395,14 @@ class GlanceCPShell:
         else:
             return parser.parse_args(argv)
 
+    def authenticate_client(self, source_or_dest, env_name, args):
+        os_args = {k[len(source_or_dest) + 1:]: v for k, v in vars(args).items() if
+                   k.startswith("%s_os_" % source_or_dest)}
+        for general_arg in ['insecure', 'timeout']:
+            if general_arg in args:
+                os_args[general_arg] = getattr(args, general_arg)
+        return create_authenticated_client(os_args, source_or_dest)
+
     def main(self, argv):
         # parse args initially with no help option and ignoring unknown
         init_args = self.parse_args(argv, initial=True)
@@ -410,8 +418,8 @@ class GlanceCPShell:
         args = self.parse_args(argv, initial=False, source_env=source_env, dest_env=dest_env, config=config)
 
         # authenticate glance client for source and dest environments
-        source_client, source_client_desc = authenticate_client("source", args)
-        dest_client, dest_client_desc = authenticate_client("dest", args)
+        source_client, source_client_desc = self.authenticate_client("source", source_env, args)
+        dest_client, dest_client_desc = self.authenticate_client("dest", dest_env, args)
 
         # find source image
         source_image = None
