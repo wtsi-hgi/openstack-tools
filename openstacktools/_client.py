@@ -119,7 +119,7 @@ def _discover_auth_versions(session, auth_url):
     return (v2_auth_url, v3_auth_url)
 
 
-def _get_keystone_session(self, **kwargs):
+def _get_keystone_session(**kwargs):
     def option_getter(opt):
         if opt.dest in kwargs:
             return kwargs[opt.dest]
@@ -129,7 +129,7 @@ def _get_keystone_session(self, **kwargs):
 
     # discover the supported keystone versions using the given auth url
     auth_url = kwargs.pop('auth_url', None)
-    (v2_auth_url, v3_auth_url) = self._discover_auth_versions(
+    (v2_auth_url, v3_auth_url) = _discover_auth_versions(
         session=ks_session,
         auth_url=auth_url)
 

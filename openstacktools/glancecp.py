@@ -47,26 +47,16 @@ Copies images from one OpenStack glance environment to another.
 
 import argparse
 import copy
-import getpass
 import io
 import os.path
+import random
 import re
 import sys
 import traceback
-import random
-import time
-
 from configparser import ConfigParser
 
-import glanceclient
 from glanceclient import exc
 from glanceclient.common import utils
-
-from keystoneauth1 import discover
-from keystoneauth1 import exceptions as ks_exc
-from keystoneauth1.identity import v2 as v2_auth
-from keystoneauth1.identity import v3 as v3_auth
-from keystoneauth1 import loading
 from oslo_utils import encodeutils
 
 from openstacktools._arguments import add_openstack_args
@@ -211,122 +201,6 @@ class GlanceCPShell(object):
             return args
         else:
             return parser.parse_args(argv)
-
-    def _get_image_url(self, args):
-        """Translate the available url-related options into a single string.
-
-        Return the endpoint that should be used to talk to Glance if a
-        clear decision can be made. Otherwise, return None.
-        """
-        if args.os_image_url:
-            return args.os_image_url
-        else:
-            return None
-
-    def _discover_auth_versions(self, session, auth_url):
-        # discover the API versions the server is supporting base on the
-        # given URL
-        v2_auth_url = None
-        v3_auth_url = None
-        try:
-            ks_discover = discover.Discover(session=session, url=auth_url)
-            v2_auth_url = ks_discover.url_for('2.0')
-            v3_auth_url = ks_discover.url_for('3.0')
-        except ks_exc.ClientException as e:
-            # Identity service may not support discover API version.
-            # Lets trying to figure out the API version from the original URL.
-            url_parts = urlparse.urlparse(auth_url)
-            (scheme, netloc, path, params, query, fragment) = url_parts
-            path = path.lower()
-            if path.startswith('/v3'):
-                v3_auth_url = auth_url
-            elif path.startswith('/v2'):
-                v2_auth_url = auth_url
-            else:
-                # not enough information to determine the auth version
-                msg = ('Unable to determine the Keystone version '
-                       'to authenticate with using the given '
-                       'auth_url. Identity service may not support API '
-                       'version discovery. Please provide a versioned '
-                       'auth_url instead. error=%s') % (e)
-                raise exc.CommandError(msg)
-
-        return (v2_auth_url, v3_auth_url)
-
-    def _get_kwargs_for_create_session(self, args):
-        if not args.os_username:
-            raise exc.CommandError(
-                _("You must provide a username for %s" % args.source_or_dest))
-
-        if not args.os_password:
-            # No password, If we've got a tty, try prompting for it
-            if hasattr(sys.stdin, 'isatty') and sys.stdin.isatty():
-                # Check for Ctl-D
-                try:
-                    args.os_password = getpass.getpass('OS Password for %s: ' % args.source_or_dest)
-                except EOFError:
-                    pass
-            # No password because we didn't have a tty or the
-            # user Ctl-D when prompted.
-            if not args.os_password:
-                raise exc.CommandError(
-                    _("You must provide a password for %s" % args.source_or_dest))
-
-        if not args.os_auth_url:
-            raise exc.CommandError(
-                _("You must provide an auth url for %s" % args.source_or_dest))
-
-        kwargs = {
-            'auth_url': args.os_auth_url,
-            'username': args.os_username,
-            'user_id': args.os_user_id,
-            'user_domain_id': args.os_user_domain_id,
-            'user_domain_name': args.os_user_domain_name,
-            'password': args.os_password,
-            'project_name': args.os_project_name,
-            'project_id': args.os_project_id,
-            'project_domain_name': args.os_project_domain_name,
-            'project_domain_id': args.os_project_domain_id,
-            'insecure': args.insecure,
-            'cacert': args.os_cacert,
-            'cert': args.os_cert,
-            'key': args.os_key
-        }
-        return kwargs
-
-    def _get_versioned_client(self, api_version, args):
-        endpoint = self._get_image_url(args)
-        auth_token = args.os_auth_token
-
-        description = "glance-v%s" % (api_version)
-
-        ks_session = None
-        if endpoint and auth_token:
-            kwargs = {
-                'token': auth_token,
-                'insecure': args.insecure,
-                'timeout': args.timeout,
-                'cacert': args.os_cacert,
-                'cert': args.os_cert,
-                'key': args.os_key,
-                'ssl_compression': args.ssl_compression
-            }
-            description += " using auth_token"
-        else:
-            kwargs = _get_kwargs_for_create_session(args)
-            ks_session, ks_desc = _get_keystone_session(**kwargs)
-            kwargs = {'session': ks_session}
-            description += ks_desc
-
-        if endpoint is None:
-            endpoint_type = args.os_endpoint_type or 'public'
-            service_type = args.os_service_type or 'image'
-            endpoint = ks_session.get_endpoint(
-                service_type=service_type,
-                interface=endpoint_type,
-                region_name=args.os_region_name)
-
-        return glanceclient.Client(api_version, endpoint, **kwargs), description
 
     def authenticate_client(self, source_or_dest, env_name, args):
         os_args = {k[len(source_or_dest) + 1:]: v for k, v in vars(args).items() if
