@@ -205,9 +205,6 @@ class GlanceCPShell(object):
     def authenticate_client(self, source_or_dest, env_name, args):
         os_args = {k[len(source_or_dest) + 1:]: v for k, v in vars(args).items() if
                    k.startswith("%s_os_" % source_or_dest)}
-        for general_arg in ['insecure', 'timeout']:
-            if general_arg in args:
-                os_args[general_arg] = getattr(args, general_arg)
         return create_authenticated_client(os_args, source_or_dest)
 
     def random_suffix(self):

@@ -15,8 +15,17 @@ SUPPORTED_VERSIONS = [1, 2]
 
 
 def create_authenticated_client(args, name="glance client"):
+    if type(args) == argparse.Namespace:
+        args = dict(vars(args).items())
+
+    for general_arg in ['insecure', 'timeout']:
+        if general_arg not in args:
+            args[general_arg] = None
+
     args['ssl_compression'] = True
     args['name'] = name
+    # XXX: It would be much nicer if a well defined template was populated here, opposed to throwing the arguments into
+    # a unstructured namespace
     args = argparse.Namespace(**args)
 
     endpoint = None
