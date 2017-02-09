@@ -309,7 +309,7 @@ class GlanceCPShell(object):
         suffix = self.random_suffix()
         for image_id in rename_images:
             while "%s.%s" % (dest_image_properties['name'], suffix) in image_names:
-                suffix = random_suffix()
+                suffix = self.random_suffix()
             new_name = "%s.%s" % (dest_image_properties['name'], suffix)
             print("renaming existing image %s to '%s'" % (image_id, new_name), file=sys.stderr)
             try:
