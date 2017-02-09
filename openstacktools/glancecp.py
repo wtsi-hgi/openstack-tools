@@ -47,31 +47,20 @@ Copies images from one OpenStack glance environment to another.
 
 import argparse
 import copy
-import getpass
 import io
 import os.path
+import random
 import re
 import sys
 import traceback
-import random
-import time
-
 from configparser import ConfigParser
 
-import glanceclient
-import six.moves.urllib.parse as urlparse
 from glanceclient import exc
-from glanceclient._i18n import _
 from glanceclient.common import utils
-
-from keystoneauth1 import discover
-from keystoneauth1 import exceptions as ks_exc
-from keystoneauth1.identity import v2 as v2_auth
-from keystoneauth1.identity import v3 as v3_auth
-from keystoneauth1 import loading
 from oslo_utils import encodeutils
 
-SUPPORTED_VERSIONS = [1, 2]
+from openstacktools._arguments import add_openstack_args
+from openstacktools._client import create_authenticated_client
 
 
 class GlanceCPShell(object):
@@ -110,201 +99,6 @@ class GlanceCPShell(object):
             return env_name, id_or_name
 
         raise ValueError("Failed to parse specification [%s]" % spec)
-
-    def env_section(self, env_name):
-        section = env_name
-        if section == "":
-            section = "common"
-        return section
-
-    def get_default(self, env_name, config, *params, default=""):
-        # try to get each param in the *params list in order from env_name section of config (or the common section if env_name is empty)
-        # failing that, if env_name is not empty try to get it from an environment variable named <ENV>_<PARAM> (e.g. myenv_OS_AUTH_URL)
-        # failing that, for OS_PROJECT_NAME if env_name is not empty set it to env_name
-        # failing that, try to get it from an environment variable named <PARAM> (e.g. OS_AUTH_URL)
-        # failing that, return the value given in the default keyword argument
-        section = self.env_section(env_name)
-        for param in params:
-            value = config.get(section, param, fallback=None)
-            if value:
-                return value
-        if env_name != "":
-            env_params = [('%s_%s' % (env_name, param)) for param in params]
-            value = utils.env(*env_params, default=None)
-            if value:
-                return value
-            for param in params:
-                if param == "OS_PROJECT_NAME":
-                    return env_name
-                if param == "OS_TENANT_NAME":
-                    return env_name
-        return utils.env(*params, default=default)
-
-    def get_help(self, env_name, *params):
-        if len(params) == 0:
-            raise ValueError("get_help called with no params")
-        defaults = []
-        section = self.env_section(env_name)
-        for param in params:
-            defaults.append("config option %s in section [%s]" % (param, section))
-        if env_name != "":
-            for param in params:
-                defaults.append("env[%s_%s]" % (env_name, param))
-            if "OS_PROJECT_NAME" in params or "OS_TENANT_NAME" in params:
-                defaults.append("the env_name in the specification ('%s')" % (env_name))
-        for param in params:
-            defaults.append("env[%s]" % (param))
-        if len(defaults) > 1:
-            defaults[-1] = "or " + defaults[-1]
-        return 'Defaults to: %s' % (', '.join(defaults))
-
-    def add_openstack_args(self, parser, source_or_dest, env_name, config):
-        parser.add_argument('--%s-os-auth-url' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_AUTH_URL'),
-                            help=self.get_help(env_name, 'OS_AUTH_URL'))
-
-        parser.add_argument('--%s_os_auth_url' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-username' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USERNAME'),
-                            help=self.get_help(env_name, 'OS_USERNAME'))
-
-        parser.add_argument('--%s_os_username' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-user-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USER_ID'),
-                            help=self.get_help(env_name, 'OS_USER_ID'))
-
-        parser.add_argument('--%s_os_user_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-user-domain-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USER_DOMAIN_NAME'),
-                            help=self.get_help(env_name, 'OS_USER_DOMAIN_NAME'))
-
-        parser.add_argument('--%s_os_user_domain_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-user-domain-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_USER_DOMAIN_ID'),
-                            help=self.get_help(env_name, 'OS_USER_DOMAIN_ID'))
-
-        parser.add_argument('--%s_os_user_domain_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-password' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PASSWORD'),
-                            help=self.get_help(env_name, 'OS_PASSWORD') + '''
-                               WARNING: specifying your password on the command-line
-                               may expose it to other users on the same machine.
-                            ''')
-
-        parser.add_argument('--%s_os_password' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_NAME', 'OS_TENANT_NAME'),
-                            help=self.get_help(env_name, 'OS_PROJECT_NAME', 'OS_TENANT_NAME'))
-
-        parser.add_argument('--%s_os_project_name' % source_or_dest,
-                            '--%s-os-tenant-name' % source_or_dest,
-                            '--%s_os_tenant_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_ID', 'OS_TENANT_ID'),
-                            help=self.get_help(env_name, 'OS_PROJECT_ID', 'OS_TENANT_ID'))
-
-        parser.add_argument('--%s_os_project_id' % source_or_dest,
-                            '--%s-os-tenant-id' % source_or_dest,
-                            '--%s_os_tenant_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-domain-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_DOMAIN_NAME'),
-                            help=self.get_help(env_name, 'OS_PROJECT_DOMAIN_NAME'))
-
-        parser.add_argument('--%s_os_project_domain_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-project-domain-id' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_PROJECT_DOMAIN_ID'),
-                            help=self.get_help(env_name, 'OS_PROJECT_DOMAIN_ID'))
-
-        parser.add_argument('--%s_os_project_domain_id' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-region-name' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_REGION_NAME'),
-                            help=self.get_help(env_name, 'OS_REGION_NAME'))
-
-        parser.add_argument('--%s_os_region_name' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-auth-token' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_AUTH_TOKEN'),
-                            help=self.get_help(env_name, 'OS_AUTH_TOKEN'))
-
-        parser.add_argument('--%s_os_auth_token' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-auth-type' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_AUTH_TYPE'),
-                            help=self.get_help(env_name, 'OS_AUTH_TYPE'))
-
-        parser.add_argument('--%s_os_auth_type' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-service-type' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_SERVICE_TYPE'),
-                            help=self.get_help(env_name, 'OS_SERVICE_TYPE'))
-
-        parser.add_argument('--%s_os_service_type' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-endpoint-type' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_ENDPOINT_TYPE'),
-                            help=self.get_help(env_name, 'OS_ENDPOINT_TYPE'))
-
-        parser.add_argument('--%s_os_endpoint_type' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-cacert' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_CACERT'),
-                            help=self.get_help(env_name, 'OS_CACERT'))
-
-        parser.add_argument('--%s_os_cacert' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-cert' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_CERT'),
-                            help=self.get_help(env_name, 'OS_CERT'))
-
-        parser.add_argument('--%s_os_cert' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-key' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_KEY'),
-                            help=self.get_help(env_name, 'OS_KEY'))
-
-        parser.add_argument('--%s_os_key' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-image-url' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_IMAGE_URL'),
-                            help=self.get_help(env_name, 'OS_IMAGE_URL'))
-
-        parser.add_argument('--%s_os_image_url' % source_or_dest,
-                            help=argparse.SUPPRESS)
-
-        parser.add_argument('--%s-os-image-api-version' % source_or_dest,
-                            default=self.get_default(env_name, config, 'OS_IMAGE_API_VERSION', default="2"),
-                            help=self.get_help(env_name, 'OS_IMAGE_API_VERSION'))
-
-        parser.add_argument('--%s_os_image_api_version' % source_or_dest,
-                            help=argparse.SUPPRESS)
 
     def parse_args(self, argv, initial=True, source_env="", dest_env="", config=ConfigParser()):
         parser = argparse.ArgumentParser(
@@ -387,8 +181,8 @@ class GlanceCPShell(object):
         parser.add_argument("--duplicate_name_strategy",
                             help=argparse.SUPPRESS)
 
-        self.add_openstack_args(parser, "source", source_env, config)
-        self.add_openstack_args(parser, "dest", dest_env, config)
+        add_openstack_args(parser, source_env, config, prefix="source")
+        add_openstack_args(parser, dest_env, config, prefix="dest")
 
         parser.add_argument('--insecure', default=False,
                             help='''
@@ -408,226 +202,13 @@ class GlanceCPShell(object):
         else:
             return parser.parse_args(argv)
 
-    def _get_image_url(self, args):
-        """Translate the available url-related options into a single string.
-
-        Return the endpoint that should be used to talk to Glance if a
-        clear decision can be made. Otherwise, return None.
-        """
-        if args.os_image_url:
-            return args.os_image_url
-        else:
-            return None
-
-    def _discover_auth_versions(self, session, auth_url):
-        # discover the API versions the server is supporting base on the
-        # given URL
-        v2_auth_url = None
-        v3_auth_url = None
-        try:
-            ks_discover = discover.Discover(session=session, url=auth_url)
-            v2_auth_url = ks_discover.url_for('2.0')
-            v3_auth_url = ks_discover.url_for('3.0')
-        except ks_exc.ClientException as e:
-            # Identity service may not support discover API version.
-            # Lets trying to figure out the API version from the original URL.
-            url_parts = urlparse.urlparse(auth_url)
-            (scheme, netloc, path, params, query, fragment) = url_parts
-            path = path.lower()
-            if path.startswith('/v3'):
-                v3_auth_url = auth_url
-            elif path.startswith('/v2'):
-                v2_auth_url = auth_url
-            else:
-                # not enough information to determine the auth version
-                msg = ('Unable to determine the Keystone version '
-                       'to authenticate with using the given '
-                       'auth_url. Identity service may not support API '
-                       'version discovery. Please provide a versioned '
-                       'auth_url instead. error=%s') % (e)
-                raise exc.CommandError(msg)
-
-        return (v2_auth_url, v3_auth_url)
-
-    def _get_keystone_session(self, **kwargs):
-        def option_getter(opt):
-            if opt.dest in kwargs:
-                return kwargs[opt.dest]
-            return
-        ks_session = loading.session.Session().load_from_options_getter(option_getter)
-        ks_desc = ""
-
-        # discover the supported keystone versions using the given auth url
-        auth_url = kwargs.pop('auth_url', None)
-        (v2_auth_url, v3_auth_url) = self._discover_auth_versions(
-            session=ks_session,
-            auth_url=auth_url)
-
-        # Determine which authentication plugin to use. First inspect the
-        # auth_url to see the supported version. If both v3 and v2 are
-        # supported, then use the highest version if possible.
-        user_id = kwargs.pop('user_id', None)
-        username = kwargs.pop('username', None)
-        password = kwargs.pop('password', None)
-        user_domain_name = kwargs.pop('user_domain_name', None)
-        user_domain_id = kwargs.pop('user_domain_id', None)
-        # project and tenant can be used interchangeably
-        project_id = (kwargs.pop('project_id', None) or
-                      kwargs.pop('tenant_id', None))
-        project_name = (kwargs.pop('project_name', None) or
-                        kwargs.pop('tenant_name', None))
-        project_domain_id = kwargs.pop('project_domain_id', None)
-        project_domain_name = kwargs.pop('project_domain_name', None)
-        auth = None
-
-        use_domain = (user_domain_id or
-                      user_domain_name or
-                      project_domain_id or
-                      project_domain_name)
-        use_v3 = v3_auth_url and (use_domain or (not v2_auth_url))
-        use_v2 = v2_auth_url and not use_domain
-
-        if use_v3:
-            auth = v3_auth.Password(
-                v3_auth_url,
-                user_id=user_id,
-                username=username,
-                password=password,
-                user_domain_id=user_domain_id,
-                user_domain_name=user_domain_name,
-                project_id=project_id,
-                project_name=project_name,
-                project_domain_id=project_domain_id,
-                project_domain_name=project_domain_name)
-            ks_desc += " keystone-v3 %s" % (project_id or project_name)
-            if project_domain_id or project_domain_name:
-                ks_desc += "%s" % (project_domain_id or project_domain_name)
-        elif use_v2:
-            auth = v2_auth.Password(
-                v2_auth_url,
-                username,
-                password,
-                tenant_id=project_id,
-                tenant_name=project_name)
-            ks_desc += " keystone-v2 %s" % (project_id or project_name)
-        else:
-            # if we get here it means domain information is provided
-            # (caller meant to use Keystone V3) but the auth url is
-            # actually Keystone V2. Obviously we can't authenticate a V3
-            # user using V2.
-            exc.CommandError("Credential and auth_url mismatch. The given "
-                             "auth_url is using Keystone V2 endpoint, which "
-                             "may not able to handle Keystone V3 credentials. "
-                             "Please provide a correct Keystone V3 auth_url.")
-
-        ks_session.auth = auth
-        return ks_session, ks_desc
-
-    def _get_kwargs_for_create_session(self, args):
-        if not args.os_username:
-            raise exc.CommandError(
-                _("You must provide a username for %s" % args.source_or_dest))
-
-        if not args.os_password:
-            # No password, If we've got a tty, try prompting for it
-            if hasattr(sys.stdin, 'isatty') and sys.stdin.isatty():
-                # Check for Ctl-D
-                try:
-                    args.os_password = getpass.getpass('OS Password for %s: ' % args.source_or_dest)
-                except EOFError:
-                    pass
-            # No password because we didn't have a tty or the
-            # user Ctl-D when prompted.
-            if not args.os_password:
-                raise exc.CommandError(
-                    _("You must provide a password for %s" % args.source_or_dest))
-
-        if not args.os_auth_url:
-            raise exc.CommandError(
-                _("You must provide an auth url for %s" % args.source_or_dest))
-
-        kwargs = {
-            'auth_url': args.os_auth_url,
-            'username': args.os_username,
-            'user_id': args.os_user_id,
-            'user_domain_id': args.os_user_domain_id,
-            'user_domain_name': args.os_user_domain_name,
-            'password': args.os_password,
-            'project_name': args.os_project_name,
-            'project_id': args.os_project_id,
-            'project_domain_name': args.os_project_domain_name,
-            'project_domain_id': args.os_project_domain_id,
-            'insecure': args.insecure,
-            'cacert': args.os_cacert,
-            'cert': args.os_cert,
-            'key': args.os_key
-        }
-        return kwargs
-
-    def _get_versioned_client(self, api_version, args):
-        endpoint = self._get_image_url(args)
-        auth_token = args.os_auth_token
-
-        description = "glance-v%s" % (api_version)
-
-        ks_session = None
-        if endpoint and auth_token:
-            kwargs = {
-                'token': auth_token,
-                'insecure': args.insecure,
-                'timeout': args.timeout,
-                'cacert': args.os_cacert,
-                'cert': args.os_cert,
-                'key': args.os_key,
-                'ssl_compression': args.ssl_compression
-            }
-            description += " using auth_token"
-        else:
-            kwargs = self._get_kwargs_for_create_session(args)
-            ks_session, ks_desc = self._get_keystone_session(**kwargs)
-            kwargs = {'session': ks_session}
-            description += ks_desc
-
-        if endpoint is None:
-            endpoint_type = args.os_endpoint_type or 'public'
-            service_type = args.os_service_type or 'image'
-            endpoint = ks_session.get_endpoint(
-                service_type=service_type,
-                interface=endpoint_type,
-                region_name=args.os_region_name)
-
-        return glanceclient.Client(api_version, endpoint, **kwargs), description
-
     def authenticate_client(self, source_or_dest, env_name, args):
         os_args = {k[len(source_or_dest) + 1:]: v for k, v in vars(args).items() if
                    k.startswith("%s_os_" % source_or_dest)}
-        for general_arg in ['insecure','timeout']:
+        for general_arg in ['insecure', 'timeout']:
             if general_arg in args:
                 os_args[general_arg] = getattr(args, general_arg)
-        os_args['ssl_compression'] = True
-        os_args['source_or_dest'] = source_or_dest
-        os_args = argparse.Namespace(**os_args)
-
-        endpoint = None
-        url_version = None
-        try:
-            if os_args.os_image_url:
-                endpoint = os_args.os_image_url
-            endpoint, url_version = utils.strip_version(endpoint)
-        except ValueError:
-            pass
-
-        try:
-            api_version = int(os_args.os_image_api_version or url_version or 2)
-            if api_version not in SUPPORTED_VERSIONS:
-                raise ValueError
-        except ValueError:
-            msg = ("Invalid API version parameter. "
-                   "Supported values are %s" % SUPPORTED_VERSIONS)
-            utils.exit(msg=msg)
-
-        client, client_desc = self._get_versioned_client(api_version, os_args)
-        return client, client_desc
+        return create_authenticated_client(os_args, source_or_dest)
 
     def random_suffix(self):
         return '%08x' % random.randrange(16**8)
