@@ -1,8 +1,9 @@
 import argparse
+import sys
 from typing import Tuple, Dict, List, Sized
 
-import sys
 from glanceclient import Client
+from glanceclient.exc import HTTPForbidden
 
 from openstacktools._arguments import add_openstack_args
 from openstacktools._client import create_authenticated_client
@@ -38,10 +39,19 @@ def main():
             print("Not deleting because of invalid consent", file=sys.stderr)
             exit(1)
 
+    failed = 0
     for i in range(len(to_delete)):
         image_id = to_delete[i]
-        client.images.delete(image_id)
-        outputter("Deleted %d of %d %s" % (i + 1, len(to_delete), _get_correct_image_noun(to_delete)))
+        try:
+            client.images.delete(image_id)
+            outputter("Deleted %d of %d %s (%d failed)"
+                      % (i + 1 - failed, len(to_delete), _get_correct_image_noun(to_delete), failed))
+        except HTTPForbidden as e:
+            # TODO: Detect that this is going to happen beforehand
+            if "You are not permitted to delete this image" in e.details:
+                failed += 1
+            else:
+                raise
 
     after_delete, _, _ = _get_images(client)
     not_deleted = [id_name_map[image_id] for image_id in sorted(list(set(to_delete).intersection(after_delete)))]
