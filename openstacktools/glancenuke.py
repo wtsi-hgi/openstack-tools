@@ -65,9 +65,9 @@ def _delete_images(client: Client, image_ids: List[str], outputter: Callable[[An
     failed = 0
     futures = []    # type: List[Future]
 
-    def on_complete(success: bool):
+    def on_complete(future: Future):
         nonlocal failed, image_ids
-        if not success:
+        if not future.result():
             failed += 1
         outputter("Deleted %d/%d %s (%d failed)"
                   % (i + 1 - failed, len(image_ids), _get_correct_image_noun(image_ids), failed))
