@@ -5,7 +5,7 @@ from threading import Lock
 from typing import Tuple, Dict, List, Sized, Callable, Any
 
 from glanceclient import Client
-from glanceclient.exc import HTTPForbidden
+from glanceclient.exc import HTTPException
 
 from openstacktools._arguments import add_openstack_args
 from openstacktools._client import create_authenticated_client
@@ -46,11 +46,14 @@ def main():
     after_delete, _, _ = _get_images(client)
     not_deleted = [id_name_map[image_id] for image_id in sorted(list(set(to_delete).intersection(after_delete)))]
     if len(not_deleted) > 0:
-        print("Could not delete %d %s:\n%s" % (len(not_deleted), _get_correct_image_noun(not_deleted), not_deleted),
-              file=sys.stderr)
-        exit(1)
-
-    outputter("They're gone!")
+        message = "Could not delete %d %s:\n%s" % (len(not_deleted), _get_correct_image_noun(not_deleted), not_deleted)
+        if not arguments.ignore_delete_failures:
+            print(message, file=sys.stderr)
+            exit(1)
+        else:
+            outputter(message)
+    else:
+        outputter("They're all gone!")
     exit(0)
 
 
@@ -96,14 +99,10 @@ def _delete_image(client: Client, image_id: str) -> bool:
     """
     try:
         client.images.delete(image_id)
-    except HTTPForbidden as e:
-        # TODO: Detect that this is going to happen beforehand
-        if "You are not permitted to delete this image" in e.details:
-            print("Unable to delete image %s: %s" % (image_id, e.details), file=sys.stderr)
-            return False
-        else:
-            raise
-    return True
+        return True
+    except HTTPException as e:
+        print("Unable to delete image %s: %s" % (image_id, e.details), file=sys.stderr)
+        return False
 
 
 def _get_images(client: Client) -> Tuple[List[str], List[str], Dict[str, str]]:
@@ -154,6 +153,8 @@ def _parse_args(args: List[str]):
     parser.add_argument("-p", "--parallel-deletes", choices=range(0, 1000), type=int, default=5,
                         dest="max_simultaneous_deletes",
                         help="Maximum number of deletes to request in parallel")
+    parser.add_argument("--ignore-delete-failures", dest="ignore_delete_failures", action="store_true", default=True,
+                        help="Whether the failure to delete one or more images should be ignored")
 
     arguments = parser.parse_args(args)
     if arguments.quiet and not arguments.no_consent_required:
