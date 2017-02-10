@@ -1,6 +1,7 @@
 import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor, Future, wait
+from threading import Lock
 from typing import Tuple, Dict, List, Sized, Callable, Any
 
 from glanceclient import Client
@@ -64,13 +65,17 @@ def _delete_images(client: Client, image_ids: List[str], outputter: Callable[[An
     """
     failed = 0
     futures = []    # type: List[Future]
+    complete = 0
+    complete_lock = Lock()
 
     def on_complete(future: Future):
-        nonlocal failed, image_ids
-        if not future.result():
-            failed += 1
-        outputter("Deleted %d/%d %s (%d failed)"
-                  % (i + 1 - failed, len(image_ids), _get_correct_image_noun(image_ids), failed))
+        nonlocal failed, image_ids, complete
+        with complete_lock:
+            complete += 1
+            if not future.result():
+                failed += 1
+            outputter("Deleted %d/%d %s (%d failed)"
+                      % (complete - failed, len(image_ids), _get_correct_image_noun(image_ids), failed))
 
     with ThreadPoolExecutor(max_workers=max_simultaneous_deletes) as executor:
         for i in range(len(image_ids)):
