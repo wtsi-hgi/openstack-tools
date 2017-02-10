@@ -151,7 +151,7 @@ def _parse_args(args: List[str]):
     parser.add_argument("-q", dest="quiet", action="store_true", default=False, help="Quiet mode (also requires -y)")
     parser.add_argument("-y", dest="no_consent_required", action="store_true", default=False,
                         help="Do not require consent before deleting images")
-    parser.add_argument("-p", "--parallel-deletes", choices=range(0, 1000), type=int, default=5,
+    parser.add_argument("-p", "--parallel-deletes", choices=range(1, 1000), type=int, default=5, metavar="{1,...,1000}",
                         dest="max_simultaneous_deletes",
                         help="Maximum number of deletes to request in parallel")
     parser.add_argument("--ignore-delete-failures", dest="ignore_delete_failures", action="store_true", default=True,
