@@ -7,7 +7,7 @@ from glanceclient import exc
 from glanceclient._i18n import _
 from glanceclient.common import utils
 from keystoneauth1 import loading
-from keystoneclient import discover, exceptions as ks_exc, session
+from keystoneclient import discover, exceptions as ks_exc
 from keystoneclient.auth.identity import v3 as v3_auth, v2 as v2_auth
 import six.moves.urllib.parse as urlparse
 

@@ -1,6 +1,7 @@
 import argparse
 import sys
-from typing import Tuple, Dict, List, Sized
+from concurrent.futures import ThreadPoolExecutor, Future, wait
+from typing import Tuple, Dict, List, Sized, Callable, Any
 
 from glanceclient import Client
 from glanceclient.exc import HTTPForbidden
@@ -19,9 +20,9 @@ def main():
     Main method.
     """
     arguments = _parse_args(sys.argv[1:])
-    client, client_description = create_authenticated_client(arguments)  # type: Tuple[Client, str]
-
     outputter = print if not arguments.quiet else null_op
+
+    client, client_description = create_authenticated_client(arguments)  # type: Tuple[Client, str]
 
     to_delete, to_leave, id_name_map = _get_images(client)
 
@@ -33,25 +34,13 @@ def main():
     outputter("Going to permanently delete %d %s:\n%s"
               % (len(to_delete), _get_correct_image_noun(to_delete), to_delete_names))
 
-    if not arguments.no_consent:
+    if not arguments.no_consent_required:
         consent = get_consent()
         if not consent:
             print("Not deleting because of invalid consent", file=sys.stderr)
             exit(1)
 
-    failed = 0
-    for i in range(len(to_delete)):
-        image_id = to_delete[i]
-        try:
-            client.images.delete(image_id)
-            outputter("Deleted %d of %d %s (%d failed)"
-                      % (i + 1 - failed, len(to_delete), _get_correct_image_noun(to_delete), failed))
-        except HTTPForbidden as e:
-            # TODO: Detect that this is going to happen beforehand
-            if "You are not permitted to delete this image" in e.details:
-                failed += 1
-            else:
-                raise
+    _delete_images(client, to_delete, outputter, max_simultaneous_deletes=arguments.max_simultaneous_deletes)
 
     after_delete, _, _ = _get_images(client)
     not_deleted = [id_name_map[image_id] for image_id in sorted(list(set(to_delete).intersection(after_delete)))]
@@ -62,6 +51,54 @@ def main():
 
     outputter("They're gone!")
     exit(0)
+
+
+def _delete_images(client: Client, image_ids: List[str], outputter: Callable[[Any], None],
+                   max_simultaneous_deletes: int=5) -> int:
+    """
+    Deletes the given images.
+    :param client: the glance client that can access OpenStack
+    :param image_ids: the identifiers of the images to delete
+    :param max_simultaneous_deletes: the maximum number of deletes to request simultaneously
+    :return: the number of images deleted
+    """
+    failed = 0
+    futures = []    # type: List[Future]
+
+    def on_complete(success: bool):
+        nonlocal failed, image_ids
+        if not success:
+            failed += 1
+        outputter("Deleted %d/%d %s (%d failed)"
+                  % (i + 1 - failed, len(image_ids), _get_correct_image_noun(image_ids), failed))
+
+    with ThreadPoolExecutor(max_workers=max_simultaneous_deletes) as executor:
+        for i in range(len(image_ids)):
+            image_id = image_ids[i]
+            future = executor.submit(_delete_image, client, image_id)
+            future.add_done_callback(on_complete)
+            futures.append(future)
+    wait(futures)
+    return len(image_ids) - failed
+
+
+def _delete_image(client: Client, image_id: str) -> bool:
+    """
+    Deletes an OpenStack image with the given identifier.
+    :param client: the glance client that can access OpenStack
+    :param image_id: the identifier of the image to delete
+    :return: whether the image was successfully deleted
+    """
+    try:
+        client.images.delete(image_id)
+    except HTTPForbidden as e:
+        # TODO: Detect that this is going to happen beforehand
+        if "You are not permitted to delete this image" in e.details:
+            print("Unable to delete image %s: %s" % (image_id, e.details), file=sys.stderr)
+            return False
+        else:
+            raise
+    return True
 
 
 def _get_images(client: Client) -> Tuple[List[str], List[str], Dict[str, str]]:
@@ -107,11 +144,14 @@ def _parse_args(args: List[str]):
     add_openstack_args(parser)
 
     parser.add_argument("-q", dest="quiet", action="store_true", default=False, help="Quiet mode (also requires -y)")
-    parser.add_argument("-y", dest="no_consent", action="store_true", default=False,
+    parser.add_argument("-y", dest="no_consent_required", action="store_true", default=False,
                         help="Do not require consent before deleting images")
+    parser.add_argument("-p", "--parallel-deletes", choices=range(0, 1000), type=int, default=5,
+                        dest="max_simultaneous_deletes",
+                        help="Maximum number of deletes to request in parallel")
 
     arguments = parser.parse_args(args)
-    if arguments.quiet and not arguments.no_consent:
+    if arguments.quiet and not arguments.no_consent_required:
         print("Must require no consent to operate in quiet mode (i.e. add the -y flag)", file=sys.stderr)
         exit(1)
     return arguments

@@ -1,10 +1,10 @@
 import sys
 from typing import Callable, Any
 
-CONSENT_AGREED = ["y", "yes", "yup", "ok", "okey", "do it", "get on with it"]
+CONSENT_AGREED = ["y", "yes", "yup", "yea", "ok", "okey", "sure", "do it", "get on with it"]
 
 
-def get_consent(outputter: Callable[[str], Any]=print) -> bool:
+def get_consent(outputter: Callable[[Any], None]=print) -> bool:
     """
     Gets consent from the user.
     :param outputter: method that output the given message to the user
