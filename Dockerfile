@@ -15,10 +15,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install glancecp
-RUN cd /tmp \
-    && git clone https://github.com/wtsi-hgi/openstack-tools.git \
-    && cd openstack-tools \
+RUN mkdir /tmp/openstack-tools
+ADD . /tmp/openstack-tools
+RUN cd /tmp/openstack-tools \
     && python3 setup.py install
+RUN rm -rf /tmp/openstack-tools
 
 # Set workdir and entrypoint
 WORKDIR /tmp
