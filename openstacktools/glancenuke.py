@@ -144,6 +144,7 @@ def _parse_args(args: List[str]):
     """
     parser = argparse.ArgumentParser(
         prog="glancenuke",
+        description="Tool for deleting all (non-protected) OpenStack images in a tenant",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     add_openstack_args(parser)
 
