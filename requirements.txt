@@ -1,3 +1,7 @@
+# Workaround for https://github.com/wtsi-hgi/openstack-tools/issues/3
+# Should be removed when the dependency issues in the dependencies are resolved
+requests==2.12.5
+
 oslo.utils>=3.8.0
 python-glanceclient==2.0.0
 python-keystoneclient>=2.3.1
